@@ -1,0 +1,409 @@
+import numpy as np
+import pandas as pd
+
+
+class MacroRandomForest:
+
+    '''
+    Open Source implementation of Macroeconomic Random Forest, developed by Phillipe Goulet Coulombe.
+    This class runs MRF, where RF is employed to generate generalized time-varying parameters
+    For a linear (macroeconomic) equation. See: https://arxiv.org/pdf/2006.12724.pdf for more details.
+    '''
+
+    def __init__(self, data, x_pos, oos_pos, y_pos=1,
+                 minsize=10, mtry_frac=1/3, min_leaf_frac_of_x=1,
+                 VI=False, ERT=False, quantile_rate=None,
+                 S_priority_vec=None, random_x=False, trend_push=1, howmany_random_x=1,
+                 howmany_keep_best_VI=20, cheap_look_at_GTVPs=True,
+                 prior_var=[], prior_mean=[], subsampling_rate=0.75,
+                 rw_regul=0.75, keep_forest=False, block_size=12,
+                 fast_rw=True, ridge_lambda=0.1, HRW=0,
+                 B=50, resampling_opt=2, print_b=True):
+
+        ######## INITIALISE VARIABLES ###########
+
+        # Dataset handling
+        self.data, self.x_pos, self.oos_pos, self.y_pos = data, x_pos, oos_pos, y_pos
+
+        # Properties of the tree
+        self.minsize, self.mtry_frac, self.min_leaf_frac_of_x = minsize, mtry_frac, min_leaf_frac_of_x
+
+        # [Insert general categorisation]
+        self.VI, self.ERT, self.quantile_rate, self.S_priority_vec = VI, ERT, quantile_rate, S_priority_vec
+
+        # [Insert general categorisation]
+        self.random_x, self.howmany_random_x, self.howmany_keep_best_VI = random_x, howmany_random_x, howmany_keep_best_VI
+
+        # [Insert general categorisation]
+        self.cheap_look_at_GTVPs, self.prior_var, self.prior_mean = cheap_look_at_GTVPs, prior_var, prior_mean
+
+        # [Insert general categorisation]
+        self.subsampling_rate, self.rw_regul, self.keep_forest = subsampling_rate, rw_regul, keep_forest
+
+        # [Insert general categorisation]
+        self.block_size, self.fast_rw = block_size, fast_rw
+
+        # [Insert general categorisation]
+        self.ridge_lambda, self.HRW, self.B, self.resampling_opt, self.print_b = ridge_lambda, HRW, B, resampling_opt, print_b
+
+        self.S_pos = np.arange(2, len(data.columns))
+        self.trend_pos = max(self.S_pos)
+        self.trend_push = trend_push
+
+        ######################################
+
+        ######## RUN LOGISTICS ###########
+
+        self._name_translations()
+        self._input_safety_checks()
+        self._ensemble_loop()
+
+    def _name_translations(self):
+        '''
+        Translation block and misc.
+        '''
+
+        self.ET = self.ERT  # translation to older names in the code
+        self.ET_rate = self.quantile_rate  # translation to older names in the code
+        self.z_pos = self.x_pos  # translation to older names in the code
+        self.x_pos = self.S_pos  # translation to older names in the code
+        self.random_z = self.random_x  # translation to older names in the code
+        # translation to older names in the code
+        self.min_leaf_fracz = self.min_leaf_frac_of_x
+        # translation to older names in the code
+        self.random_z_number = self.howmany_random_x
+        self.x_pos = self.S_pos  # translation to older names in the code
+        self.VI_rep = 10*self.VI  # translation to older names in the code
+        # translation to older names in the code
+        self.bootstrap_opt = self.resampling_opt
+        self.regul_lambda = self.ridge_lambda  # translation to older names in the code
+        self.prob_vec = self.S_priority_vec  # translation to older names in the code
+        # translation to older names in the code
+        self.keep_VI = self.howmany_keep_best_VI
+        # used to be an option, but turns out I can't think of a good reason to choose 'False'. So I impose it.
+        self.no_rw_trespassing = True
+        self.BS4_frac = self.subsampling_rate  # translation to older names in the code
+
+        ################### INTERNAL NOTE: RYAN ###################
+        # VERIFY np.where has exact same functionality as which() from R.
+        # translate self.trend_pos to be interms of position in S
+        self.trend_pos = np.where(self.S_pos == self.trend_pos)
+        ################### INTERNAL NOTE: RYAN ###################
+
+        if self.prior_var != []:
+            # those are infact implemented in terms of heterogeneous lambdas
+            self.prior_var = 1/self.prior_var
+
+    def _input_safety_checks(self):
+        '''
+        Sanity checks of input variables
+        '''
+
+        if len(self.z_pos) > 10 and (self.regul_lambda < 0.25 or self.rw_regul == 0):
+            raise Exception(
+                'For models of this size, consider using a higher ridge lambda (>0.25) and RW regularization.')
+        if(min(self.x_pos) < 1):
+            raise Exception('S.pos cannot be non-postive.')
+        if(max(self.x_pos) > len(self.data.columns)):
+            raise Exception(
+                'S.pos specifies variables beyond the limit of your data matrix.')
+
+        ################### INTERNAL NOTE: RYAN ###################
+        # Another use of np.where to replace which(). Need to check it.
+        if self.y_pos in list(self.x_pos):
+            self.x_pos = self.x_pos[self.x_pos != self.y_pos]
+            print('Beware: foolproof 1 activated. self.S_pos and self.y_pos overlap.')
+            self.trend_pos = np.where(
+                self.x_pos == self.trend_pos)  # foolproof 1
+        ################### INTERNAL NOTE: RYAN ###################
+
+        if self.y_pos in list(self.z_pos):
+            self.z_pos = self.z_pos[self.z_pos != self.y_pos]
+            # foolproof 2
+            print('Beware: foolproof 2 activated. self.x_pos and self.y_pos overlap.')
+
+        if self.regul_lambda < 0.0001:
+            self.regul_lamba = 0.0001
+            # foolproof 3
+            print('Ridge lambda was too low or negative. Was imposed to be 0.0001')
+
+        if self.ET_rate != None:
+            if self.ET_rate < 0:
+                self.ET_rate = 0
+                # foolproof 4
+                print('Quantile Rate/ERT rate was forced to 0, It cannot be negative.')
+
+        if self.prior_mean != None and self.random_z:
+            print('Are you sure you want to mix a customized prior with random X?')
+
+        if len(self.z_pos) < 1:
+            raise Exception('You need to specificy at least one X.')
+
+        if len(self.prior_var) != 0 or len(self.prior_mean) != 0:
+            if self.prior_var == None and self.prior_mean != None:
+                raise Exception('Need to additionally specificy prior_var.')
+            if self.prior_mean == None and self.prior_var != None:
+                raise Exception('Need to additionally specificy prior_mean.')
+            if len(self.prior_mean) != len(self.z_pos) + 1 or len(self.prior_var) != len(self.z_pos) + 1:
+                raise Exception(
+                    'Length of prior vectors do not match that of X.')
+
+        if len(self.x_pos) < 5:
+            print(
+                'Your S_t is small. Consider augmentating with noisy carbon copies it for better results.')
+        if len(self.x_pos) * self.mtry_frac < 1:
+            raise Exception('Mtry.frac is too small.')
+        if self.min_leaf_fracz > 2:
+            self.min_leaf_fracz = 2
+            print('min.leaf.frac.of.x forced to 2. Let your trees run deep!')
+
+        # print(self.data.columns)
+        # if self.data.columns == None:
+        #     raise Exception('Data frame must have column names.')
+
+        if self.min_leaf_fracz*(len(self.z_pos)+1) < 2:
+            self.min_leaf_fracz = 2/(len(self.z_pos)+1)
+            print(f'Min.leaf.frac.of.x was too low. Thus, it was forced to ', 2 /
+                  ({len(self.z_pos)}+1), ' -- a bare minimum. You should consider a higher one.', sep='')
+
+        if len(self.oos_pos) == 0:
+            self.oos_flag = True
+            self.shit = np.zeros(shape=(2, len(self.data.columns)))
+            self.shit.columns = self.data.columns
+            self.new_data = pd.concat([self.data, self.shit])
+            self.original_data = self.data.copy()
+            self.data = self.new_data
+            self.oos_pos = [len(self.data)-1, len(self.data)]
+            self.fake_pos = self.oos_pos
+
+            ################### INTERNAL NOTE: RYAN ###################
+            # Does this have the same effect as rownames = c() in R? I think this may be a genuine difference.
+            self.data.index = None
+            ################### INTERNAL NOTE: RYAN ###################
+
+        else:
+            self.oos_flag = False
+
+    def _array_setup(self):
+        '''
+        Initialising helpful arrays.
+        '''
+
+        self.dat = self.data
+        self.K = len(self.z_pos)+1
+        if self.random_z:
+            self.K = self.random_z_number+1
+
+        self.commitee = np.tile(np.nan, (self.B, len(self.data.columns)))
+        self.avg_pred = [0]*len(self.oos_pos)
+        self.pred_kf = np.tile(np.nan, (self.B, len(self.data.columns)))
+        self.all_fits = np.tile(
+            np.nan, (self.B, len(self.data)-len(self.oos_pos)))
+
+        self.avg_beta = np.zeros(shape=(len(self.data.columns), self.K))
+        self.whos_in_mat = np.zeros(shape=(len(self.data), self.B))
+
+        ################### INTERNAL NOTE: RYAN ###################
+        # self.beta_draws = ASK Phillipe about R code here.
+        # self.betas_draws_nonOVF = self.betas_draws
+        # betas.shu = array(0,dim=c(dim(avg.beta),length(x.pos)+1))
+        # betas.shu.nonOVF = array(0,dim=c(dim(avg.beta),length(x.pos)+1))
+        # avg.beta.nonOVF=avg.beta
+        ################### INTERNAL NOTE: RYAN ###################
+
+        self.forest = []
+        self.random_vecs = []
+
+    def _ensemble_loop(self):
+        '''
+        Core random forest ensemble loop.
+        '''
+
+        ################### INTERNAL NOTE: RYAN ###################
+        # Phillipe's Version:
+        # Bs = 1:B
+        # foreach(b = Bs) %dopar% {
+        # if(printb==TRUE){print(paste('Tree ',b,' out of ',B,sep=''))}
+
+        # Mine:
+        self.Bs = np.arange(1, self.B + 1)
+        # Is upper-bound of for-loop inclusive in R? Google seems to think so
+        ################### INTERNAL NOTE: RYAN ###################
+
+        ################### INTERNAL NOTE: RYAN ###################
+        # Should this be above the loop? Don't see the need for this to run everytime.
+        self._process_subsampling_selection()
+        ################### INTERNAL NOTE: RYAN ###################
+
+        for b in self.Bs:
+            if self.print_b:
+                print(f"Tree {b} out of {self.B}")
+
+        if self.random_z:
+
+            self.z_pos_effective = np.random.choice(a=self.z_pos,
+                                                    replace=False,
+                                                    size=self.random_z_number)
+        else:
+
+            self.z_pos_effective = self.z_pos
+
+    def _process_subsampling_selection(self):
+        '''
+        Processes user choice for subsampling technique.
+        '''
+
+        # No bootstap/sub-sampling. Should not be used for looking at GTVPs.
+        if self.bootstrap_opt == 0:
+            self.chosen_ones_plus = [
+                1, len(self.data.iloc[-self.oos_pos, :])]  # TRICKY ###
+
+        elif self.bootstrap_opt == 1:  # Plain sub-sampling
+            self.chosen_ones = np.random.choice(a=np.arange(1, len(self.data.iloc[-self.oos_pos, :]) + 1),
+                                                replace=False,
+                                                size=self.BS4_frac*len(self.data.iloc[-self.oos_pos, :]))  # Is size equivalent to n here? Why both options appear in R?
+            self.chosen_ones_plus = list(self.chosen_ones)
+            self.rando_vec = list(sorted(self.chosen_ones_plus))
+
+        # Block sub-sampling. Recommended when looking at TVPs.
+        elif self.bootstrap_opt == 2:
+
+            pass
+            ################### INTERNAL NOTE: RYAN ###################
+            # To hear from Isaac
+            ################### INTERNAL NOTE: RYAN ###################
+
+        elif self.bootstrap_opt == 3:  # Plain bayesian bootstrap
+            self.chosen_ones = np.random.exponential(
+                scale=1, size=len(self.data.iloc[-self.oos_pos, :]))
+            self.chosen_ones_plus = self.chosen_ones/np.mean(self.chosen_ones)
+            self.rando_vec = self.chosen_ones_plus
+
+        # Block Bayesian Bootstrap. Recommended for forecasting.
+        elif self.bootstrap_opt == 4:
+
+            pass
+            ################### INTERNAL NOTE: RYAN ###################
+            # To hear from Isaac
+            ################### INTERNAL NOTE: RYAN ###################
+
+    def _one_MRF_tree(self):
+        '''
+        Function to create a single MRF tree.
+        '''
+
+        # The original basis for this code is taken from publicly available code for a simple tree by André Bleier.
+
+        # Standardize data (remeber, we are doing ridge in the end)
+        self.std_stuff = standard(self.data)
+        self.data = self.std_stuff["Y"]
+
+        # Adjust prior.mean according to standarization
+        if self.prior_mean != None:
+            self.prior_mean[-1] = (1/self.std_stuff['std'][self.y_pos]) * \
+                (self.prior_mean[-1]*self.std_stuff['std'][self.z_pos])
+            self.prior_mean[1] = (self.prior_mean[1]-self.std_stuff['mean'][self.y_pos] +
+                                  self.std_stuff['mean'][self.z_pos]@self.prior_mean[-1])/self.std_stuff['std'][self.y_pos]
+
+        if min(self.rando_vec) < 1:
+            self.weights = self.rando_vec
+            self.rando_vec = np.arange(1, min(self.oos_pos))
+            self.bayes = True
+        else:
+            self.bayes = False
+
+        if self.minsize < 2 * self.min_leaf_fracz * (len(self.z_pos)+2):
+            self.minsize = 2*self.min_leaf_fracz*(len(self.z_pos)+1)+2
+
+        # coerce to a dataframe
+        self.data_ori = pd.DataFrame(self.data)
+        self.noise = 0.00000015 * \
+            np.random.normal(len(self.data.iloc[self.rando_vec, :]))
+        self.data.iloc[self.rando_vec,
+                       :] = self.data.iloc[self.rando_vec, :] + self.noise
+
+        self.data = pd.DataFrame(self.data.iloc[list(self.rando_vec), :])
+        self.rw_regul_dat = pd.DataFrame(
+            self.data_ori.iloc[-self.oos_pos, list(1, self.z_pos)])
+
+        self.X = self.concat([1, self.data.iloc[:, list(self.x_pos)]])
+        self.y = self.data.iloc[:, self.y_pos]
+        self.z = self.data.iloc[:, self.z_pos]
+
+        if self.bayes:
+            self.z = pd.DataFrame(self.weights*self.z)
+            self.y = pd.DataFrame(self.weights*self.y)
+
+        self.do_splits = True
+
+        self.tree_info = {"NODE": 1, "NOBS": len(
+            self.data), "FILTER": None, "Terminal": "Split"}
+        for i in range(1, len(self.z_pos) + 2):
+            self.tree_info[f'b0.{i}'] = 1
+        self.tree_info = pd.DataFrame(self.tree_info)
+
+        while self.do_splits:
+            self.to_calculate = self.tree_info[self.tree_info['TERMINAL'] == "SPLIT"]
+            self.all_stop_flags = None
+
+            for j in self.to_calculate:
+
+                # Handle root node
+                if self.tree_info.loc[j, "FILTER"] != None:
+                    # subset data according to the filter
+                    self.this_data = self.data[self.data ==
+                                               self.tree_info.loc[j, "FILTER"]]
+                    self.column_binded_data = pd.concat(
+                        [self.rando_vec, self.data], axis=1)
+                    self.find_out_who = self.column_binded_data[self.column_binded_data ==
+                                                                self.tree_info.loc[j, "FILTER"]]
+                    self.whos_who = self.find_out_who.iloc[:, 1]
+
+                    # Get the design matrix
+
+                    self.X = pd.concat([1, self.this_data.iloc[:, self.x_pos]])
+                    self.y = self.this_data.iloc[:, self.y_pos]
+                    self.z = self.this_data.iloc[:, self.z_pos]
+
+                    if self.bayes:
+                        self.z = pd.DataFrame(
+                            self.weights[self.whos_who]*self.z)
+                        self.y = pd.DataFrame(
+                            self.weights[self.whos_who]*np.matrix(self.y))
+                    else:
+                        self.this_data = self.data
+                        self.whos_who = self.rando_vec
+                        if self.bayes:
+                            self.this_data = self.weights * self.data
+
+                    self.old_b0 = self.tree_info.loc[j, "b0"]
+
+                    ############## Select potential candidates for this split ###############
+                    self.SET = self.X.iloc[:, -1]  # all X's but the intercept
+                    # if(y.pos<trend.pos){trend.pos=trend.pos-1} #so the user can specify trend pos in terms of position in the data matrix, not S_t
+                    # modulation option
+
+                    if self.prob_vec.isna():
+                        self.prob_vec = np.array([1]*len(self.SET.columns))
+                    if self.trend_push > 1:
+                        self.prob_vec[self.trend_pos] = self.trend_push
+
+                    # classic mtry move
+                    self.select_from = []
+
+
+def standard(Y):
+    '''
+    Function to standardise the data. Remember we are doing ridge.
+    '''
+
+    Y = np.matrix(Y)
+
+    size = Y.shape()
+
+    mean_y = Y.mean(axis=1)
+    sd_y = Y.std(axis=1)
+
+    Y0 = (Y - np.full((size[1], 1), mean_y) - np.full((size[1], 1), sd_y))
+
+    return {"Y": Y0, "mean": mean_y, "sd": sd_y}
