@@ -1,3 +1,5 @@
+from ctypes import Union
+from tkinter import N
 import numpy as np
 import pandas as pd
 
@@ -239,14 +241,16 @@ class MacroRandomForest:
             if self.print_b:
                 print(f"Tree {b} out of {self.B}")
 
-        if self.random_z:
+            if self.random_z:
 
-            self.z_pos_effective = np.random.choice(a=self.z_pos,
-                                                    replace=False,
-                                                    size=self.random_z_number)
-        else:
+                self.z_pos_effective = np.random.choice(a=self.z_pos,
+                                                        replace=False,
+                                                        size=self.random_z_number)
+            else:
 
-            self.z_pos_effective = self.z_pos
+                self.z_pos_effective = self.z_pos
+
+            self.rt_output = self._one_MRF_tree()
 
     def _process_subsampling_selection(self):
         '''
@@ -268,10 +272,22 @@ class MacroRandomForest:
         # Block sub-sampling. Recommended when looking at TVPs.
         elif self.bootstrap_opt == 2:
 
-            pass
-            ################### INTERNAL NOTE: RYAN ###################
-            # To hear from Isaac
-            ################### INTERNAL NOTE: RYAN ###################
+            self.n_obs = self.data[:self.oos_pos[0] - 1].shape[0]
+
+            self.groups = sorted(np.random.choice(
+                list(np.arange(1, int(self.n_obs/self.block_size) + 1)), size=self.n_obs))
+
+            self.rando_vec = np.random.exponential(
+                1, size=int(self.n_obs)) + 0.1
+
+            self.chosen_ones_plus = self.rando_vec
+
+            self.rando_vec = np.where(self.chosen_ones_plus > np.quantile(
+                self.chosen_ones_plus, 1 - self.BS4_frac))[0]
+
+            self.chosen_ones_plus = self.rando_vec
+
+            self.rando_vec = sorted(self.chosen_ones_plus.tolist())
 
         elif self.bootstrap_opt == 3:  # Plain bayesian bootstrap
             self.chosen_ones = np.random.exponential(
@@ -299,16 +315,20 @@ class MacroRandomForest:
         self.data = self.std_stuff["Y"]
 
         # Adjust prior.mean according to standarization
-        if self.prior_mean != None:
-            self.prior_mean[-1] = (1/self.std_stuff['std'][self.y_pos]) * \
-                (self.prior_mean[-1]*self.std_stuff['std'][self.z_pos])
-            self.prior_mean[1] = (self.prior_mean[1]-self.std_stuff['mean'][self.y_pos] +
-                                  self.std_stuff['mean'][self.z_pos]@self.prior_mean[-1])/self.std_stuff['std'][self.y_pos]
+        if len(self.prior_mean) != 0:
+            self.prior_mean[-1] = (1/self.std_stuff["std"][:, self.y_pos]) * \
+                (self.prior_mean[-1]*self.std_stuff["std"][:, self.z_pos])
+            self.prior_mean[1] = (self.prior_mean[1]-self.std_stuff["mean"][:, self.y_pos] +
+                                  self.std_stuff["mean"][:, self.z_pos]@self.prior_mean[-1])/self.std_stuff["std"][:, self.y_pos]
 
-        if min(self.rando_vec) < 1:
-            self.weights = self.rando_vec
-            self.rando_vec = np.arange(1, min(self.oos_pos))
-            self.bayes = True
+        #### Internal Note: Can this Ever be Less than 1? In the R implementation at least ####
+        # print(self.rando_vec)
+        # if min(self.rando_vec) < 1:
+        #     self.weights = self.rando_vec
+        #     self.rando_vec = np.arange(1, min(self.oos_pos))
+        #     self.bayes = True
+        #### ############################################################################# ####
+
         else:
             self.bayes = False
 
@@ -318,15 +338,21 @@ class MacroRandomForest:
         # coerce to a dataframe
         self.data_ori = pd.DataFrame(self.data)
         self.noise = 0.00000015 * \
-            np.random.normal(len(self.data.iloc[self.rando_vec, :]))
+            np.random.normal(len(self.data[self.rando_vec, :]))
+
+        self.data = pd.DataFrame(self.data)
+
         self.data.iloc[self.rando_vec,
                        :] = self.data.iloc[self.rando_vec, :] + self.noise
 
-        self.data = pd.DataFrame(self.data.iloc[list(self.rando_vec), :])
+        self.data = pd.DataFrame(self.data.iloc[self.rando_vec, :])
         self.rw_regul_dat = pd.DataFrame(
-            self.data_ori.iloc[-self.oos_pos, list(1, self.z_pos)])
+            self.data_ori.iloc[-self.oos_pos, [0] + self.z_pos])
 
-        self.X = self.concat([1, self.data.iloc[:, list(self.x_pos)]])
+        self.row_of_ones = pd.Series([1]*len(self.data), index=self.data.index)
+        self.X = pd.concat([self.row_of_ones,
+                           self.data.iloc[:, list(self.x_pos)]], axis=1)
+
         self.y = self.data.iloc[:, self.y_pos]
         self.z = self.data.iloc[:, self.z_pos]
 
@@ -337,13 +363,15 @@ class MacroRandomForest:
         self.do_splits = True
 
         self.tree_info = {"NODE": 1, "NOBS": len(
-            self.data), "FILTER": None, "Terminal": "Split"}
+            self.data), "FILTER": None, "TERMINAL": "SPLIT"}
         for i in range(1, len(self.z_pos) + 2):
-            self.tree_info[f'b0.{i}'] = 1
-        self.tree_info = pd.DataFrame(self.tree_info)
+            self.tree_info[f'b0.{i}'] = 0
+
+        self.tree_info = pd.DataFrame(self.tree_info, index=[0])
 
         while self.do_splits:
-            self.to_calculate = self.tree_info[self.tree_info['TERMINAL'] == "SPLIT"]
+            self.to_calculate = self.tree_info[self.tree_info['TERMINAL']
+                                               == "SPLIT"].index.tolist()
             self.all_stop_flags = None
 
             for j in self.to_calculate:
@@ -389,9 +417,88 @@ class MacroRandomForest:
                         self.prob_vec[self.trend_pos] = self.trend_push
 
                     # classic mtry move
-                    self.select_from = []
+                    self.select_from = np.random.choice(np.arange(1, len(
+                        self.SET.columns) + 1), size=round(len(self.SET.columns)*self.mtry_frac), p=self.prob_vec)
 
+                    if len(self.SET.columns) < 5:
+                        self.select_from = np.arange(1, len(self.SET.columns))
 
+                    splitting = self.SET[:, self.select_from].apply(
+                        self._splitter_mrf(), axis=1)
+
+    def _splitter_mrf(self, x):
+
+        cons_w = 0.01
+
+        uni_x = np.unique(x)
+        splits = sorted(uni_x)
+        z = pd.concat([self.row_of_ones, np.matrix(self.z)])
+        y = np.matrix(self.y)
+
+        sse = np.repeat(np.inf, repeats=len(uni_x), axis=0)
+
+        the_seq = np.array(splits)
+
+        if self.rw_regul <= 0: self.fast_rw = True
+
+        if self.ET_rate != None:
+            if self.ET and len(z) > 2*self.minsize:
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
+                splits = np.random.choice(samp, size=max(1, self.ET_rate*len(samp)))
+                the_seq = np.array(splits) 
+            elif self.ET == False and len(z) > 4*self.minsize:
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
+                splits = np.quantile(samp, np.arange(0.01, 1, int(max(1, self.ET_rate*len(samp)))))
+                the_seq = np.array(splits) 
+
+        reg_mat = np.diag(self.prior_var)*self.regul_lamba
+        reg_mat[1, 1] = cons_w*reg_mat[1,1]
+
+        if self.prior_var != None:
+            reg_mat = np.diag(np.array(self.prior_var))*self.regul_lamba
+
+        if self.prior_mean == None:
+            b0 = np.linalg.solve(np.cross(z) + reg_mat, np.cross(z, y))
+        
+        else:
+            b0 = np.linalg.solve(np.cross(z) + reg_mat, np.cross(z, y - z@self.prior_mean)) + self.prior_mean
+
+        nrrd = self.rw_regul_dat.shape[0]
+        ncrd = self.rw_regul_dat.shape[1]
+
+        for i in the_seq:
+            sp = splits[i]
+            id1 = np.where(x < sp)
+            id2 = np.where(x >= sp)
+
+            if len(id1) >= self.min_leaf_fracz*z.shape[1] and len(id2) >= self.min_leaf_fracz*z.shape[1]:
+                Id = id1
+                yy = yy[Id]
+                zz = z[Id, :]
+                zz_privy = zz
+
+                if not self.fast_rw:
+                    everybody = (self.whos_who[Id]+1).union(self.whos_who[Id]-1)
+                    everybody = [a for a in everybody if not a in self.whos_who]
+                    everybody = everybody[everybody > 0]
+                    everybody = everybody[everybody < nrrd + 1]
+
+                    if self.no_rw_trespassing:
+                        everybody = set.intersection(everybody, self.rando_vec)
+                        everybody2 = (self.whoswho[Id]+2).union(self.whoswho[Id]-2)
+                        everybody2 = [a for a in everybody2 if not a in self.whos_who]
+                        everybody2 = [a for a in everybody2 if not a in everybody]
+                        everybody2 = everybody2[everybody2 > 0]
+                        everybody2 = everybody2[everybody2 < nrrd + 1]
+                        
+                        if self.no_rw_trespassing: everybody2 = set.intersect(everybody2, self.rando_vec)
+
+                        if len(everybody2) == 0:
+                            y_neighbors2 = None
+                            z_neighbors2 = None
+                        
+                        else:
+                            y_neighbors2 = np.matrix(self.rw_regul^2 * self.rw_regul_dat[everybody2, 1])
 def standard(Y):
     '''
     Function to standardise the data. Remember we are doing ridge.
@@ -399,11 +506,12 @@ def standard(Y):
 
     Y = np.matrix(Y)
 
-    size = Y.shape()
+    size = Y.shape
 
-    mean_y = Y.mean(axis=1)
-    sd_y = Y.std(axis=1)
+    mean_y = Y.mean(axis=0)
+    sd_y = Y.std(axis=0)
 
-    Y0 = (Y - np.full((size[1], 1), mean_y) - np.full((size[1], 1), sd_y))
+    Y0 = (Y - np.repeat(mean_y,
+          repeats=size[0], axis=0)) / np.repeat(sd_y, repeats=size[0], axis=0)
 
-    return {"Y": Y0, "mean": mean_y, "sd": sd_y}
+    return {"Y": Y0, "mean": mean_y, "std": sd_y}
