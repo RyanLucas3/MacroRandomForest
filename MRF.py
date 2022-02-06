@@ -50,7 +50,7 @@ class MacroRandomForest:
         # [Insert general categorisation]
         self.ridge_lambda, self.HRW, self.B, self.resampling_opt, self.print_b = ridge_lambda, HRW, B, resampling_opt, print_b
 
-        self.S_pos = np.arange(2, len(data.columns))
+        self.S_pos = np.arange(1, len(data.columns))
         self.trend_pos = max(self.S_pos)
         self.trend_push = trend_push
 
@@ -340,19 +340,20 @@ class MacroRandomForest:
 
         data = pd.DataFrame(self.data)
 
-        display(data.iloc[self.rando_vec,
-                          :])
-
-        print(self.noise)
-        data.iloc[self.rando_vec,
-                  :] += self.noise
+        data = data.iloc[self.rando_vec,
+                         :].add(self.noise, axis=0)
 
         self.rw_regul_dat = pd.DataFrame(
-            self.data_ori.iloc[-self.oos_pos, [0] + self.z_pos])
+            self.data_ori.iloc[: self.oos_pos[0] - 1, [0] + list(self.z_pos)])
 
         self.row_of_ones = pd.Series([1]*len(data), index=data.index)
+
+        print(self.data)
+        print(list(self.x_pos))
         self.X = pd.concat([self.row_of_ones,
-                           data.iloc[:, list(self.x_pos)]], axis=1)
+                            data.iloc[:, list(self.x_pos)]], axis=1)
+
+        print(self.X)
 
         self.y = data.iloc[:, self.y_pos]
         self.z = data.iloc[:, self.z_pos]
