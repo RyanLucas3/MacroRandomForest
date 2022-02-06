@@ -348,13 +348,8 @@ class MacroRandomForest:
 
         self.row_of_ones = pd.Series([1]*len(data), index=data.index)
 
-        print(self.data)
-        print(list(self.x_pos))
         self.X = pd.concat([self.row_of_ones,
                             data.iloc[:, list(self.x_pos)]], axis=1)
-
-        print(self.X)
-
         self.y = data.iloc[:, self.y_pos]
         self.z = data.iloc[:, self.z_pos]
 
@@ -366,6 +361,7 @@ class MacroRandomForest:
 
         self.tree_info = {"NODE": 1, "NOBS": len(
             data), "FILTER": None, "TERMINAL": "SPLIT"}
+
         for i in range(1, len(self.z_pos) + 2):
             self.tree_info[f'b0.{i}'] = 0
 
@@ -374,17 +370,20 @@ class MacroRandomForest:
         while self.do_splits:
             self.to_calculate = self.tree_info[self.tree_info['TERMINAL']
                                                == "SPLIT"].index.tolist()
+
             self.all_stop_flags = None
 
             for j in self.to_calculate:
-
                 # Handle root node
                 if self.tree_info.loc[j, "FILTER"] != None:
                     # subset data according to the filter
+
                     self.this_data = data[data ==
                                           self.tree_info.loc[j, "FILTER"]]
+
                     self.column_binded_data = pd.concat(
                         [self.rando_vec, data], axis=1)
+
                     self.find_out_who = self.column_binded_data[self.column_binded_data ==
                                                                 self.tree_info.loc[j, "FILTER"]]
                     self.whos_who = self.find_out_who.iloc[:, 1]
@@ -400,58 +399,61 @@ class MacroRandomForest:
                             self.weights[self.whos_who]*self.z)
                         self.y = pd.DataFrame(
                             self.weights[self.whos_who]*np.matrix(self.y))
-                    else:
-                        self.this_data = data
-                        self.whos_who = self.rando_vec
-                        if self.bayes:
-                            self.this_data = self.weights * self.data
+                else:
+                    self.this_data = data
+                    self.whos_who = self.rando_vec
+                    if self.bayes:
+                        self.this_data = self.weights * self.data
 
-                    self.old_b0 = self.tree_info.loc[j, "b0"]
+                ####### INTERNAL NOTE: ASK PHILLIPE ABOUT THIS b0 thing ######
+                self.old_b0 = self.tree_info.loc[j, "b0.1"]
 
-                    ############## Select potential candidates for this split ###############
-                    self.SET = self.X.iloc[:, -1]  # all X's but the intercept
-                    # if(y.pos<trend.pos){trend.pos=trend.pos-1} #so the user can specify trend pos in terms of position in the data matrix, not S_t
-                    # modulation option
+                ############## Select potential candidates for this split ###############
+                self.SET = self.X.iloc[:, 1:-1]  # all X's but the intercept
+                display(self.X)
+                display(self.SET)
+                # if(y.pos<trend.pos){trend.pos=trend.pos-1} #so the user can specify trend pos in terms of position in the data matrix, not S_t
+                # modulation option
 
-                    if self.prob_vec.isna():
-                        self.prob_vec = np.array([1]*len(self.SET.columns))
-                    if self.trend_push > 1:
-                        self.prob_vec[self.trend_pos] = self.trend_push
+                if self.prob_vec.isna():
+                    self.prob_vec = np.array([1]*len(self.SET.columns))
+                if self.trend_push > 1:
+                    self.prob_vec[self.trend_pos] = self.trend_push
 
-                    # classic mtry move
-                    self.select_from = np.random.choice(np.arange(1, len(
-                        self.SET.columns) + 1), size=round(len(self.SET.columns)*self.mtry_frac), p=self.prob_vec)
+                # classic mtry move
+                self.select_from = np.random.choice(np.arange(1, len(
+                    self.SET.columns) + 1), size=round(len(self.SET.columns)*self.mtry_frac), p=self.prob_vec)
 
-                    if len(self.SET.columns) < 5:
-                        self.select_from = np.arange(1, len(self.SET.columns))
+                if len(self.SET.columns) < 5:
+                    self.select_from = np.arange(1, len(self.SET.columns))
 
-                    splitting = self._splitter_mrf(
-                        self.SET[:, self.select_from])
+                splitting = self._splitter_mrf(
+                    self.SET[:, self.select_from])
 
-                    self.stop_flag = all(splitting[1, :] == np.inf)
+                self.stop_flag = all(splitting[1, :] == np.inf)
 
-                    self.tmp_splitter = splitting[1, :].argmin()
+                self.tmp_splitter = splitting[1, :].argmin()
 
-                    mn = max(self.tree_info['NODE'])
+                mn = max(self.tree_info['NODE'])
 
-                    ######## INTERNAL NOTE: PUT THIS BACK IN ########
+                ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
-                    # paste filter rules
+                # paste filter rules
 
-                    # tmp_filter <- c(paste(names(tmp_splitter), ">=",
-                    #                         splitting[2,tmp_splitter]),
-                    #                 paste(names(tmp_splitter), "<",
-                    #                         splitting[2,tmp_splitter]))
+                # tmp_filter <- c(paste(names(tmp_splitter), ">=",
+                #                         splitting[2,tmp_splitter]),
+                #                 paste(names(tmp_splitter), "<",
+                #                         splitting[2,tmp_splitter]))
 
-                    # split_here  <- !sapply(tmp_filter,
-                    #     FUN = function(x,y) any(grepl(x, x = y)),
-                    #     y = tree_info$FILTER)
+                # split_here  <- !sapply(tmp_filter,
+                #     FUN = function(x,y) any(grepl(x, x = y)),
+                #     y = tree_info$FILTER)
 
-                    ######## INTERNAL NOTE: PUT THIS BACK IN ########
+                ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
-                    if not self.tree_info.loc[j, "FILTER"].isna():
-                        tmp_filter = f"{self.tree_info.loc[j, 'FILTER']}" + \
-                            " & " + f'{tmp_filter}'
+                if not self.tree_info.loc[j, "FILTER"].isna():
+                    tmp_filter = f"{self.tree_info.loc[j, 'FILTER']}" + \
+                        " & " + f'{tmp_filter}'
 
             self.do_splits = False
 
@@ -473,12 +475,12 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)))
                 the_seq = np.array(splits)
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, int(max(1, self.ET_rate*len(samp)))))
                 the_seq = np.array(splits)
