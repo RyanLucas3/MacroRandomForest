@@ -127,7 +127,7 @@ class MacroRandomForest:
             print('Beware: foolproof 2 activated. self.x_pos and self.y_pos overlap.')
 
         if self.regul_lambda < 0.0001:
-            self.regul_lamba = 0.0001
+            self.regul_lambda = 0.0001
             # foolproof 3
             print('Ridge lambda was too low or negative. Was imposed to be 0.0001')
 
@@ -274,7 +274,7 @@ class MacroRandomForest:
             self.n_obs = self.data[:self.oos_pos[0] - 1].shape[0]
 
             self.groups = sorted(np.random.choice(
-                list(np.arange(0, int(self.n_obs/self.block_size))), size=self.n_obs))
+                list(np.arange(0, int(self.n_obs/self.block_size))), size=self.n_obs, replace=True))
 
             self.rando_vec = np.random.exponential(
                 1, size=int(self.n_obs/self.block_size)) + 0.1
@@ -409,26 +409,31 @@ class MacroRandomForest:
                 self.old_b0 = self.tree_info.loc[j, "b0.1"]
 
                 ############## Select potential candidates for this split ###############
-                self.SET = self.X.iloc[:, 1:-1]  # all X's but the intercept
-                display(self.X)
-                display(self.SET)
+                self.SET = self.X.iloc[:, 1:]  # all X's but the intercept
+
                 # if(y.pos<trend.pos){trend.pos=trend.pos-1} #so the user can specify trend pos in terms of position in the data matrix, not S_t
                 # modulation option
 
-                if self.prob_vec.isna():
-                    self.prob_vec = np.array([1]*len(self.SET.columns))
+                if self.prob_vec == None:
+                    self.prob_vec = np.repeat(1, repeats=len(self.SET.columns))
+
                 if self.trend_push > 1:
                     self.prob_vec[self.trend_pos] = self.trend_push
 
+                ####### INTERNAL NOTE: ASK PHILLIPE ABOUT prob.vec. Currently it looks like [1,1,1,1,..., 1, 4] ######
+                self.prob_vec = np.array([value/sum(self.prob_vec)
+                                          for value in self.prob_vec])
+                ### Does this just mean that column has a 4x prob of selection? In python this doesnt work the same ###
+
                 # classic mtry move
-                self.select_from = np.random.choice(np.arange(1, len(
-                    self.SET.columns) + 1), size=round(len(self.SET.columns)*self.mtry_frac), p=self.prob_vec)
+                self.select_from = np.random.choice(np.arange(0, len(
+                    self.SET.columns)), size=round(len(self.SET.columns)*self.mtry_frac), p=self.prob_vec, replace=False)
 
                 if len(self.SET.columns) < 5:
-                    self.select_from = np.arange(1, len(self.SET.columns))
+                    self.select_from = np.arange(0, len(self.SET.columns))
 
                 splitting = self._splitter_mrf(
-                    self.SET[:, self.select_from])
+                    self.SET.iloc[:, self.select_from])
 
                 self.stop_flag = all(splitting[1, :] == np.inf)
 
@@ -463,11 +468,11 @@ class MacroRandomForest:
 
         uni_x = np.unique(x)
         splits = sorted(uni_x)
-        z = pd.concat([self.row_of_ones, np.matrix(self.z)])
+
+        z = np.insert(np.matrix(self.z), 0, self.row_of_ones, axis=1)
         y = np.matrix(self.y)
 
         sse = np.repeat(np.inf, repeats=len(uni_x), axis=0)
-
         the_seq = np.array(splits)
 
         if self.rw_regul <= 0:
@@ -477,7 +482,7 @@ class MacroRandomForest:
             if self.ET and len(z) > 2*self.minsize:
                 samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.random.choice(
-                    samp, size=max(1, self.ET_rate*len(samp)))
+                    samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.array(splits)
             elif self.ET == False and len(z) > 4*self.minsize:
                 samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
@@ -485,18 +490,19 @@ class MacroRandomForest:
                     0.01, 1, int(max(1, self.ET_rate*len(samp)))))
                 the_seq = np.array(splits)
 
-        reg_mat = np.diag(self.prior_var)*self.regul_lamba
-        reg_mat[1, 1] = cons_w*reg_mat[1, 1]
+        reg_mat = np.identity(z.shape[1])*self.regul_lambda
+        reg_mat[0, 0] = cons_w*reg_mat[0, 0]
 
-        if self.prior_var != None:
-            reg_mat = np.diag(np.array(self.prior_var))*self.regul_lamba
+        if len(self.prior_var) > 0:
+            reg_mat = np.diag(np.array(self.prior_var))*self.regul_lambda
 
-        if self.prior_mean == None:
-            b0 = np.linalg.solve(np.cross(z) + reg_mat, np.cross(z, y))
+        elif len(self.prior_mean) == 0:
+            b0 = np.linalg.solve(np.matmul(z.T, z) + reg_mat, z@y.T)
 
         else:
+            print(np.cross(z, y - z@self.prior_mean))
             b0 = np.linalg.solve(
-                np.cross(z) + reg_mat, np.cross(z, y - z@self.prior_mean)) + self.prior_mean
+                np.matmul(z.T, z) + reg_mat, np.cross(z, y - z@self.prior_mean)) + self.prior_mean
 
         nrrd = self.rw_regul_dat.shape[0]
         ncrd = self.rw_regul_dat.shape[1]
@@ -562,11 +568,11 @@ class MacroRandomForest:
                         if len(yy) != zz.shape[0]:
                             print(f'{len(yy)} and {zz.shape[0]}')
 
-                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.cross(zz) +
+                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) +
                                        reg_mat, np.cross(zz, yy)) + self.HRW*b0)
 
                     else:
-                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.cross(zz) + reg_mat, np.cross(
+                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.cross(
                             zz, yy - zz @ self.prior_mean)) + self.prior_mean + self.HRW*b0)
 
                     Id = id2
@@ -611,10 +617,10 @@ class MacroRandomForest:
                                    z_neighbors2, None)
 
                     if self.prior_mean == None:
-                        p2 = zz_privy@(1-self.HRW)*np.linalg.solve(np.cross(zz) +
+                        p2 = zz_privy@(1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) +
                                                                    reg_mat, np.cross(zz, yy)) + self.HRW*b0
                     else:
-                        p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.cross(zz) + reg_mat, np.cross(
+                        p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.cross(
                             zz, yy - zz @ self.prior_mean)) + self.prior_mean+self.HRW*b0)
 
                     sse[i] = sum((y[id1] - p1) ^ 2) + sum((y[id2] - p2) ^ 2)
