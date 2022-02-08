@@ -439,9 +439,9 @@ class MacroRandomForest:
 
                 self.stop_flag = splitting['sse'] == np.inf
 
-                # self.tmp_splitter = splitting[0, :].argmin()
+                self.tmp_splitter = splitting[0, :].argmin()
 
-                # mn = max(self.tree_info['NODE'])
+                mn = max(self.tree_info['NODE'])
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
