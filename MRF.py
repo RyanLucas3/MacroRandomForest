@@ -434,8 +434,8 @@ class MacroRandomForest:
                 if len(self.SET.columns) < 5:
                     self.select_from = np.arange(0, len(self.SET.columns))
 
-                splitting = self._splitter_mrf(
-                    self.SET.iloc[:, self.select_from])
+                splitting = self.SET.iloc[:, self.select_from].apply(
+                    lambda x: self._splitter_mrf(x))
 
                 self.stop_flag = splitting['sse'] == np.inf
 
@@ -498,14 +498,12 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, int(max(1, self.ET_rate*len(samp)))))
                 the_seq = np.arange(0, len(splits))
@@ -517,34 +515,24 @@ class MacroRandomForest:
             reg_mat = np.diag(np.array(self.prior_var))*self.regul_lambda
 
         if len(self.prior_mean) == 0:
-
             b0 = np.linalg.solve(np.matmul(z.T, z) + reg_mat, z.T@y.T)
-
-        # else:
-        #     b0 = np.linalg.solve(
-        #         np.matmul(z.T, z) + reg_mat, np.matmul(z, y - z@self.prior_mean)) + self.prior_mean
 
         nrrd = self.rw_regul_dat.shape[0]
         ncrd = self.rw_regul_dat.shape[1]
 
         for i in the_seq:
-            sp = splits[i]
-            print(i)
-            id1 = np.where(x < sp)
-            id2 = np.where(x >= sp)
 
-            print(len(id1))
-            print(len(id2))
-            print(self.min_leaf_fracz*z.shape[1])
+            sp = splits[i]
+            id1 = np.where(x < sp)[0]
+            id2 = np.where(x >= sp)[0]
 
             if len(id1) >= self.min_leaf_fracz*z.shape[1] and len(id2) >= self.min_leaf_fracz*z.shape[1]:
                 Id = id1
-                yy = yy[Id]
+                yy = y.take([Id])
                 zz = z[Id, :]
                 zz_privy = zz
 
                 if not self.fast_rw:
-                    print(1)
                     everybody = (self.whos_who[Id] +
                                  1).union(self.whos_who[Id]-1)
                     everybody = [
@@ -590,19 +578,25 @@ class MacroRandomForest:
                     zz = np.vstack(np.matrix(zz), z_neighbors, z_neighbors2)
 
                 # bvars or not
-                if self.prior_mean == None:
+                if len(self.prior_mean) == 0:
                     if len(yy) != zz.shape[0]:
                         print(f'{len(yy)} and {zz.shape[0]}')
 
-                    p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) +
-                                                                reg_mat, np.matmul(zz, yy)) + self.HRW*b0)
+                    p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) +
+                                                                reg_mat, np.matmul(zz.T, yy.T)) + self.HRW*b0)
 
                 else:
-                    p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.matmul(
-                        zz, yy - zz @ self.prior_mean)) + self.prior_mean + self.HRW*b0)
+                    pass
+
+                    ###### INTERNAL NOTE: RYAN ######
+                    # p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.matmul(
+                    # zz, yy - zz @ self.prior_mean)) + self.prior_mean + self.HRW*b0)
+                    # WIP
+
+                   ###### INTERNAL NOTE: RYAN ######
 
                 Id = id2
-                yy = y[Id]
+                yy = y.take([Id])
                 zz = z[Id, :]
                 zz_privy = zz
 
@@ -614,51 +608,56 @@ class MacroRandomForest:
                     everybody = everybody[everybody > 0]
                     everybody = everybody[everybody < nrrd + 1]
 
-                if self.no_rw_trespassing:
-                    everybody = set.intersection(everybody, self.rando_vec)
-                everybody2 = (self.whoswho[Id]+2).union(self.whoswho[Id]-2)
-                everybody2 = [
-                    a for a in everybody2 if not a in self.whos_who]
-                everybody2 = [a for a in everybody2 if not a in everybody]
-                everybody2 = everybody2[everybody2 > 0]
-                everybody2 = everybody2[everybody2 < nrrd + 1]
+                    if self.no_rw_trespassing:
+                        everybody = set.intersection(everybody, self.rando_vec)
+                    everybody2 = (self.whoswho[Id]+2).union(self.whoswho[Id]-2)
+                    everybody2 = [
+                        a for a in everybody2 if not a in self.whos_who]
+                    everybody2 = [a for a in everybody2 if not a in everybody]
+                    everybody2 = everybody2[everybody2 > 0]
+                    everybody2 = everybody2[everybody2 < nrrd + 1]
 
-                if self.no_rw_trespassing:
-                    everybody2 = set.intersection(
-                        everybody2, self.rando_vec)
+                    if self.no_rw_trespassing:
+                        everybody2 = set.intersection(
+                            everybody2, self.rando_vec)
 
-                if len(everybody) == 0:
-                    y_neighbors = None
-                    z_neighbors = None
+                    if len(everybody) == 0:
+                        y_neighbors = None
+                        z_neighbors = None
 
+                    else:
+                        y_neighbors2 = np.matrix(
+                            (self.rw_regul ^ 2) * self.rw_regul_dat[everybody2, 1])
+                        z_neighbours2 = np.matrix(self.rw_regul ^ 2*np.hstack(
+                            np.repeat(1, repeats=len(everybody2)),
+                            np.matrix(self.rw_regul_dat[everybody2, 1: ncrd])))
+
+                    yy = yy.append(y_neighbors).append(y_neighbors2)
+                    zz = np.vstack(np.matrix(zz), z_neighbors,
+                                   z_neighbors2, None)
+
+                if len(self.prior_mean) == 0:
+
+                    p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) +
+                                                                reg_mat, np.matmul(zz.T, yy.T)) + self.HRW*b0)
                 else:
-                    y_neighbors2 = np.matrix(
-                        (self.rw_regul ^ 2) * self.rw_regul_dat[everybody2, 1])
-                    z_neighbours2 = np.matrix(self.rw_regul ^ 2*np.hstack(
-                        np.repeat(1, repeats=len(everybody2)),
-                        np.matrix(self.rw_regul_dat[everybody2, 1: ncrd])))
 
-                yy = yy.append(y_neighbors).append(y_neighbors2)
-                zz = np.vstack(np.matrix(zz), z_neighbors,
-                               z_neighbors2, None)
+                    pass
+                    ###### INTERNAL NOTE: RYAN ######
+                    # p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) + reg_mat, np.matmul(
+                    #    zz, yy - zz @ self.prior_mean)) + self.prior_mean+self.HRW*b0)
+                    # WIP
 
-                if self.prior_mean == None:
-                    p2 = zz_privy@(1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) +
-                                                               reg_mat, np.matmul(zz, yy)) + self.HRW*b0
-                else:
-                    p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.matmul(
-                        zz, yy - zz @ self.prior_mean)) + self.prior_mean+self.HRW*b0)
+                   ###### INTERNAL NOTE: RYAN ######
 
-            print(id1)
-            print(id2)
-            sse[i] = sum((y.take([id1]) - p1) ^ 2) + \
-                sum((y.take([id2]) - p2) ^ 2)
+            print(p2)
+            print(y.take([id2]))
+            sse[i] = sum((y.take([id1]) - p1) ** 2) + \
+                sum((y.take([id2]) - p2) ** 2)
 
         # implement a mild preference for 'center' splits, allows trees to run deeper
         sse = DV_fun(sse, DV_pref=0.15)
         split_at = splits[sse.argmin()]
-
-        print(sse)
 
         return {"sse": min(sse), "split": split_at, "b0": b0}
 
