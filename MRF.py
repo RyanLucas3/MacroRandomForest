@@ -264,7 +264,7 @@ class MacroRandomForest:
                 1, len(self.data.iloc[-self.oos_pos, :])]  # TRICKY ###
 
         elif self.bootstrap_opt == 1:  # Plain sub-sampling
-            self.chosen_ones = np.random.choice(a=np.arange(1, len(self.data.iloc[-self.oos_pos, :]) + 1),
+            self.chosen_ones = np.random.choice(a=np.arange(0, len(self.data.iloc[-self.oos_pos, :]) + 1),
                                                 replace=False,
                                                 size=self.BS4_frac*len(self.data.iloc[-self.oos_pos, :]))  # Is size equivalent to n here? Why both options appear in R?
             self.chosen_ones_plus = list(self.chosen_ones)
@@ -498,12 +498,13 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, int(max(1, self.ET_rate*len(samp)))))
                 the_seq = np.arange(0, len(splits))
@@ -650,8 +651,6 @@ class MacroRandomForest:
 
                    ###### INTERNAL NOTE: RYAN ######
 
-            print(p2)
-            print(y.take([id2]))
             sse[i] = sum((y.take([id1]) - p1) ** 2) + \
                 sum((y.take([id2]) - p2) ** 2)
 
