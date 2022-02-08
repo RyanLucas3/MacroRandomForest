@@ -60,6 +60,8 @@ class MacroRandomForest:
         self._name_translations()
         self._array_setup()
         self._input_safety_checks()
+
+        ######## TRAIN FOREST ###########
         self._ensemble_loop()
 
     def _name_translations(self):
@@ -467,6 +469,8 @@ class MacroRandomForest:
         cons_w = 0.01
 
         uni_x = np.unique(x)
+
+        print(uni_x)
         splits = sorted(uni_x)
 
         z = np.insert(np.matrix(self.z), 0, self.row_of_ones, axis=1)
@@ -480,12 +484,14 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.array(splits)
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, int(max(1, self.ET_rate*len(samp)))))
                 the_seq = np.array(splits)
@@ -496,16 +502,18 @@ class MacroRandomForest:
         if len(self.prior_var) > 0:
             reg_mat = np.diag(np.array(self.prior_var))*self.regul_lambda
 
-        elif len(self.prior_mean) == 0:
-            b0 = np.linalg.solve(np.matmul(z.T, z) + reg_mat, z@y.T)
+        if len(self.prior_mean) == 0:
 
-        else:
-            print(np.cross(z, y - z@self.prior_mean))
-            b0 = np.linalg.solve(
-                np.matmul(z.T, z) + reg_mat, np.cross(z, y - z@self.prior_mean)) + self.prior_mean
+            b0 = np.linalg.solve(np.matmul(z.T, z) + reg_mat, z.T@y.T)
+
+        # else:
+        #     b0 = np.linalg.solve(
+        #         np.matmul(z.T, z) + reg_mat, np.matmul(z, y - z@self.prior_mean)) + self.prior_mean
 
         nrrd = self.rw_regul_dat.shape[0]
         ncrd = self.rw_regul_dat.shape[1]
+
+        print(the_seq)
 
         for i in the_seq:
             sp = splits[i]
@@ -547,7 +555,7 @@ class MacroRandomForest:
                             self.rw_regul*self.rw_regul_dat[everybody, 0])
                         z_neighbours = np.matrix(self.rw_regul * np.hstack(
                             np.repeat(1, repeats=len(everybody2)),
-                            np.matrix(self.rw_regul_dat[everybody2, 1: ncrd])))
+                            np.matrix(self.rw_regul_dat[everybody2, 1: ncrd+1])))
 
                     if len(everybody2) == 0:
                         y_neighbors2 = None
@@ -558,7 +566,7 @@ class MacroRandomForest:
                             self.rw_regul ^ 2 * self.rw_regul_dat[everybody2, 0])
                         z_neighbours2 = np.matrix(self.rw_regul ^ 2*np.hstack(
                             np.repeat(1, repeats=len(everybody2)),
-                            np.matrix(self.rw_regul_dat[everybody2, 1: ncrd])))
+                            np.matrix(self.rw_regul_dat[everybody2, 1: ncrd+1])))
 
                     yy = yy.append(y_neighbors).append(y_neighbors2)
                     zz = np.vstack(np.matrix(zz), z_neighbors, z_neighbors2)
@@ -569,10 +577,10 @@ class MacroRandomForest:
                             print(f'{len(yy)} and {zz.shape[0]}')
 
                         p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) +
-                                       reg_mat, np.cross(zz, yy)) + self.HRW*b0)
+                                       reg_mat, np.matmul(zz, yy)) + self.HRW*b0)
 
                     else:
-                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.cross(
+                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.matmul(
                             zz, yy - zz @ self.prior_mean)) + self.prior_mean + self.HRW*b0)
 
                     Id = id2
@@ -618,9 +626,9 @@ class MacroRandomForest:
 
                     if self.prior_mean == None:
                         p2 = zz_privy@(1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) +
-                                                                   reg_mat, np.cross(zz, yy)) + self.HRW*b0
+                                                                   reg_mat, np.matmul(zz, yy)) + self.HRW*b0
                     else:
-                        p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.cross(
+                        p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.matmul(
                             zz, yy - zz @ self.prior_mean)) + self.prior_mean+self.HRW*b0)
 
                     sse[i] = sum((y[id1] - p1) ^ 2) + sum((y[id2] - p2) ^ 2)
