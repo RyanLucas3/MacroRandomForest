@@ -313,16 +313,16 @@ class MacroRandomForest:
 
         # The original basis for this code is taken from publicly available code for a simple tree by André Bleier.
         # Standardize data (remeber, we are doing ridge in the end)
-        self.std_stuff = standard(self.data)
-        self.data = self.std_stuff["Y"]
+        std_stuff = standard(self.data)
+        data = std_stuff["Y"]
 
         # Adjust prior.mean according to standarization
         if len(self.prior_mean) != 0:
-            self.prior_mean[-1] = (1/self.std_stuff["std"][:, self.y_pos]) * \
-                (self.prior_mean[-1]*self.std_stuff["std"][:, self.z_pos])
+            self.prior_mean[-1] = (1/std_stuff["std"][:, self.y_pos]) * \
+                (self.prior_mean[-1]*std_stuff["std"][:, self.z_pos])
 
-            self.prior_mean[1] = (self.prior_mean[1]-self.std_stuff["mean"][:, self.y_pos] +
-                                  self.std_stuff["mean"][:, self.z_pos]@self.prior_mean[-1])/self.std_stuff["std"][:, self.y_pos]
+            self.prior_mean[1] = (self.prior_mean[1]-std_stuff["mean"][:, self.y_pos] +
+                                  std_stuff["mean"][:, self.z_pos]@self.prior_mean[-1])/std_stuff["std"][:, self.y_pos]
 
         if min(self.rando_vec) < 0:
             self.weights = self.rando_vec
@@ -338,7 +338,7 @@ class MacroRandomForest:
         # coerce to a dataframe
         self.data_ori = pd.DataFrame(self.data)
         self.noise = 0.00000015 * \
-            np.random.normal(size=len(self.data[self.rando_vec, :]))
+            np.random.normal(size=len(self.data.iloc[self.rando_vec, :]))
 
         data = pd.DataFrame(self.data)
 
@@ -417,19 +417,19 @@ class MacroRandomForest:
                 # modulation option
 
                 if self.prob_vec == None:
-                    self.prob_vec = np.repeat(1, repeats=len(self.SET.columns))
+                    prob_vec = np.repeat(1, repeats=len(self.SET.columns))
 
                 if self.trend_push > 1:
-                    self.prob_vec[self.trend_pos] = self.trend_push
+                    prob_vec[self.trend_pos] = self.trend_push
 
                 ####### INTERNAL NOTE: ASK PHILLIPE ABOUT prob.vec. Currently it looks like [1,1,1,1,..., 1, 4] ######
-                self.prob_vec = np.array([value/sum(self.prob_vec)
-                                          for value in self.prob_vec])
+                prob_vec = np.array([value/sum(prob_vec)
+                                     for value in prob_vec])
                 ### Does this just mean that column has a 4x prob of selection? In python this doesnt work the same ###
 
                 # classic mtry move
                 self.select_from = np.random.choice(np.arange(0, len(
-                    self.SET.columns)), size=round(len(self.SET.columns)*self.mtry_frac), p=self.prob_vec, replace=False)
+                    self.SET.columns)), size=round(len(self.SET.columns)*self.mtry_frac), p=prob_vec, replace=False)
 
                 if len(self.SET.columns) < 5:
                     self.select_from = np.arange(0, len(self.SET.columns))
@@ -437,11 +437,11 @@ class MacroRandomForest:
                 splitting = self._splitter_mrf(
                     self.SET.iloc[:, self.select_from])
 
-                self.stop_flag = all(splitting[1, :] == np.inf)
+                self.stop_flag = splitting['sse'] == np.inf
 
-                self.tmp_splitter = splitting[1, :].argmin()
+                # self.tmp_splitter = splitting[0, :].argmin()
 
-                mn = max(self.tree_info['NODE'])
+                # mn = max(self.tree_info['NODE'])
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
@@ -458,7 +458,7 @@ class MacroRandomForest:
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
-                if not self.tree_info.loc[j, "FILTER"].isna():
+                if self.tree_info.loc[j, "FILTER"] != None:
                     tmp_filter = f"{self.tree_info.loc[j, 'FILTER']}" + \
                         " & " + f'{tmp_filter}'
 
@@ -470,31 +470,28 @@ class MacroRandomForest:
 
         uni_x = np.unique(x)
 
-        print(uni_x)
         splits = sorted(uni_x)
 
         z = np.insert(np.matrix(self.z), 0, self.row_of_ones, axis=1)
         y = np.matrix(self.y)
 
         sse = np.repeat(np.inf, repeats=len(uni_x), axis=0)
-        the_seq = np.array(splits)
+        the_seq = np.arange(0, len(splits))
 
         if self.rw_regul <= 0:
             self.fast_rw = True
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
-                the_seq = np.array(splits)
+                the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1]]
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, int(max(1, self.ET_rate*len(samp)))))
-                the_seq = np.array(splits)
+                the_seq = np.arange(0, len(splits))
 
         reg_mat = np.identity(z.shape[1])*self.regul_lambda
         reg_mat[0, 0] = cons_w*reg_mat[0, 0]
@@ -512,8 +509,6 @@ class MacroRandomForest:
 
         nrrd = self.rw_regul_dat.shape[0]
         ncrd = self.rw_regul_dat.shape[1]
-
-        print(the_seq)
 
         for i in the_seq:
             sp = splits[i]
@@ -642,11 +637,12 @@ class MacroRandomForest:
 
 # implement a middle of the range preference for middle of the range splits.
 def DV_fun(sse, DV_pref=0.25):
-    seq = np.array(sse)
-    down_voting = 0.5*seq ^ 2 - seq
+    seq = np.arange(0, len(sse))
+    down_voting = 0.5*seq**2 - seq
     down_voting = down_voting/np.mean(down_voting)
     down_voting = down_voting - min(down_voting) + 1
-    down_voting = down_voting ^ DV_pref
+    down_voting = down_voting**DV_pref
+
     return sse*down_voting
 
 
