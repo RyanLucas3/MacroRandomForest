@@ -453,13 +453,14 @@ class MacroRandomForest:
                 splitting = self.SET.iloc[:, self.select_from].apply(
                     lambda x: self._splitter_mrf(x))
 
-                self.stop_flag = splitting['sse'] == np.inf
 
-                # self.tmp_splitter = splitting[0, :].argmin()
+                self.stop_flag = all(splitting[0, :] == np.inf)
+
+                self.tmp_splitter = splitting[0, :].argmin()
 
                 mn = max(self.tree_info['NODE'])
 
-                # tmp_filter =
+                tmp_filter = [f"{self.tmp_splitter} >= {splitting[1, self.tmp_splitter]}", f"{self.tmp_splitter} < {splitting[1, self.tmp_splitter]}"]
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
@@ -607,8 +608,9 @@ class MacroRandomForest:
 
                 # bvars or not
                 if len(self.prior_mean) == 0:
-                    if len(yy) != zz.shape[0]:
-                        print(f'{len(yy)} and {zz.shape[0]}')
+
+                    # if len(yy) != zz.shape[0]:
+                    #     print(f'{len(yy)} and {zz.shape[0]}')
 
                     p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) +
                                                                 reg_mat, np.matmul(zz.T, yy.T)) + self.HRW*b0)
@@ -687,11 +689,14 @@ class MacroRandomForest:
 
         split_at = splits[sse.argmin()]
 
-        return {"sse": min(sse), "split": split_at, "b0": b0}
+        return pd.Series([min(sse)] + [split_at] + list(b0.flat))
 
 
-# implement a middle of the range preference for middle of the range splits.
 def DV_fun(sse, DV_pref=0.25):
+    '''
+    implement a middle of the range preference for middle of the range splits.
+    '''
+
     seq = np.arange(0, len(sse))
     down_voting = 0.5*seq**2 - seq
     down_voting = down_voting/np.mean(down_voting)
