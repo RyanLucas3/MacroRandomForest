@@ -12,7 +12,7 @@ class MacroRandomForest:
     '''
     Open Source implementation of Macroeconomic Random Forest.
     This class runs MRF, where RF is employed to generate generalized time-varying parameters
-    For a linear (macroeconomic) equation. See: https://arxiv.org/pdf/2006.12724.pdf for more details.
+    for a linear (macroeconomic) equation. See: https://arxiv.org/pdf/2006.12724.pdf for more details.
     '''
 
     def __init__(self, data, x_pos, oos_pos, y_pos=1,
