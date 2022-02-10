@@ -5,6 +5,7 @@ from turtle import down
 import numpy as np
 import pandas as pd
 import sys
+import operator
 
 
 class MacroRandomForest:
@@ -453,23 +454,18 @@ class MacroRandomForest:
                 splitting = self.SET.iloc[:, self.select_from].apply(
                     lambda x: self._splitter_mrf(x))
 
+                self.stop_flag = all(splitting.iloc[0, :] == np.inf)
 
-                self.stop_flag = all(splitting[0, :] == np.inf)
-
-                self.tmp_splitter = splitting[0, :].argmin()
+                self.tmp_splitter = splitting.iloc[0, :].argmin()
 
                 mn = max(self.tree_info['NODE'])
 
-                tmp_filter = [f"{self.tmp_splitter} >= {splitting[1, self.tmp_splitter]}", f"{self.tmp_splitter} < {splitting[1, self.tmp_splitter]}"]
+                tmp_filter = [f"self.this_data[{self.tmp_splitter}] >= {splitting.iloc[1, self.tmp_splitter]}",
+                              f"self.this_data[{self.tmp_splitter}] < {splitting.iloc[1, self.tmp_splitter]}"]
+
+                ops = {">=": operator.ge, "<": operator.le, "< ": operator.le}
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
-
-                # paste filter rules
-
-                # tmp_filter <- c(paste(names(tmp_splitter), ">=",
-                #                         splitting[2,tmp_splitter]),
-                #                 paste(names(tmp_splitter), "<",
-                #                         splitting[2,tmp_splitter]))
 
                 # split_here  <- !sapply(tmp_filter,
                 #     FUN = function(x,y) any(grepl(x, x = y)),
@@ -478,8 +474,25 @@ class MacroRandomForest:
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
                 if self.tree_info.loc[j, "FILTER"] != None:
-                    tmp_filter = f"{self.tree_info.loc[j, 'FILTER']}" + \
-                        " & " + f'{tmp_filter}'
+                    tmp_filter = tmp_filter.append(
+                        self.tree_info.loc[j, 'FILTER'])
+
+                tmp_df = pd.DataFrame(tmp_filter).transpose()
+
+                nobs = [len(self.this_data[eval(tmp_filter[i])])
+                        for i in range(len(tmp_filter))]
+
+                tmp_nobs = pd.concat([tmp_df, pd.DataFrame(nobs).transpose()])
+
+                if any(tmp_nobs[1] <= self.minsize):
+                    split_here = np.repeat(False, repeats=2, axis=0)
+
+                split_here = np.repeat(False, repeats=2, axis=0)
+                split_here[tmp_nobs[1] >= self.minsize] = True
+
+                terminal = np.repeat("SPLIT", repeats=2, axis=0)
+                terminal[tmp_nobs[1] < self.minsize] = "LEAF"
+                terminal[tmp_nobs == 0] = "TRASH"
 
                 # Error handling! check if the splitting rule has already been invoked
                 # split_here  <- !sapply(tmp_filter,
@@ -520,7 +533,7 @@ class MacroRandomForest:
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1] : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
