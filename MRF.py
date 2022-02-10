@@ -30,6 +30,8 @@ class MacroRandomForest:
 
         # Dataset handling
         self.data, self.x_pos, self.oos_pos, self.y_pos = data, x_pos, oos_pos, y_pos
+        self.data.columns = [i for i in range(
+            len(data.columns)] 
 
         # Properties of the tree
         self.minsize, self.mtry_frac, self.min_leaf_frac_of_x = minsize, mtry_frac, min_leaf_frac_of_x
@@ -370,43 +372,51 @@ class MacroRandomForest:
             self.z = pd.DataFrame(self.weights*self.z)
             self.y = pd.DataFrame(self.weights*self.y)
 
-        self.do_splits = True
+        do_splits = True
 
-        self.tree_info = {"NODE": 1, "NOBS": len(
+        tree_info = {"NODE": 1, "NOBS": len(
             data), "FILTER": None, "TERMINAL": "SPLIT"}
 
         for i in range(1, len(self.z_pos) + 2):
-            self.tree_info[f'b0.{i}'] = 0
+            tree_info[f'b0.{i}'] = 0
 
-        self.tree_info = pd.DataFrame(self.tree_info, index=[0])
+        tree_info = pd.DataFrame(tree_info, index=[0])
 
-        while self.do_splits:
+        while do_splits:
 
-            self.to_calculate = self.tree_info[self.tree_info['TERMINAL']
-                                               == "SPLIT"].index.tolist()
+            self.to_calculate = tree_info[tree_info['TERMINAL']
+                                          == "SPLIT"].index.tolist()
 
-            self.all_stop_flags = None
+            all_stop_flags = []
 
             for j in self.to_calculate:
 
                 # Handle root node
-                if self.tree_info.loc[j, "FILTER"] != None:
+                if tree_info.loc[j, "FILTER"] != None:
                     # subset data according to the filter
 
-                    self.this_data = data[data ==
-                                          self.tree_info.loc[j, "FILTER"]]
+                    print("self.data" + tree_info.loc[j, "FILTER"])
 
-                    self.column_binded_data = pd.concat(
-                        [self.rando_vec, data], axis=1)
+                    print(self.data)
+                    self.this_data = self.data[eval(
+                        "self.data" + tree_info.loc[j, "FILTER"])]
 
-                    self.find_out_who = self.column_binded_data[self.column_binded_data ==
-                                                                self.tree_info.loc[j, "FILTER"]]
+                    self.column_binded_data = data
+
+                    # print(len())
+
+                    self.column_binded_data.insert(
+                        0, "rando_vec", self.rando_vec)
+
+                    self.find_out_who = self.column_binded_data[eval("self.column_binded_data" +
+                                                                     tree_info.loc[j, "FILTER"])]
 
                     self.whos_who = self.find_out_who.iloc[:, 1]
 
                     # Get the design matrix
 
-                    self.X = pd.concat([1, self.this_data.iloc[:, self.x_pos]])
+                    self.X = self.this_data.iloc[:, self.x_pos]
+                    self.X.insert(0, "Intercept", [1]*len(self.X))
                     self.y = self.this_data.iloc[:, self.y_pos]
                     self.z = self.this_data.iloc[:, self.z_pos]
 
@@ -424,7 +434,7 @@ class MacroRandomForest:
                         self.this_data = self.weights * self.data
 
                 ####### INTERNAL NOTE: ASK PHILLIPE ABOUT THIS b0 thing ######
-                self.old_b0 = self.tree_info.loc[j, "b0.1"]
+                self.old_b0 = tree_info.loc[j, "b0.1"]
 
                 ############## Select potential candidates for this split ###############
                 self.SET = self.X.iloc[:, 1:]  # all X's but the intercept
@@ -454,16 +464,16 @@ class MacroRandomForest:
                 splitting = self.SET.iloc[:, self.select_from].apply(
                     lambda x: self._splitter_mrf(x))
 
-                self.stop_flag = all(splitting.iloc[0, :] == np.inf)
+                stop_flag = all(splitting.iloc[0, :] == np.inf)
 
-                self.tmp_splitter = splitting.iloc[0, :].argmin()
+                tmp_splitter = splitting.iloc[0, :].idxmin()
 
-                mn = max(self.tree_info['NODE'])
+                mn = max(tree_info['NODE'])
 
-                tmp_filter = [f"self.this_data[{self.tmp_splitter}] >= {splitting.iloc[1, self.tmp_splitter]}",
-                              f"self.this_data[{self.tmp_splitter}] < {splitting.iloc[1, self.tmp_splitter]}"]
+                df_to_filter = self.this_data
 
-                ops = {">=": operator.ge, "<": operator.le, "< ": operator.le}
+                tmp_filter = [f"[{tmp_splitter}] >= {splitting.loc[1, tmp_splitter]}",
+                              f"[{tmp_splitter}] < {splitting.loc[1, tmp_splitter]}"]
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
@@ -473,26 +483,50 @@ class MacroRandomForest:
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
-                if self.tree_info.loc[j, "FILTER"] != None:
+                if tree_info.loc[j, "FILTER"] != None:
                     tmp_filter = tmp_filter.append(
-                        self.tree_info.loc[j, 'FILTER'])
+                        tree_info.loc[j, 'FILTER'])
 
                 tmp_df = pd.DataFrame(tmp_filter).transpose()
 
-                nobs = [len(self.this_data[eval(tmp_filter[i])])
+                nobs = [len(self.this_data[eval("self.this_data" + tmp_filter[i])])
                         for i in range(len(tmp_filter))]
 
                 tmp_nobs = pd.concat([tmp_df, pd.DataFrame(nobs).transpose()])
 
-                if any(tmp_nobs[1] <= self.minsize):
+                if any(tmp_nobs.iloc[1] <= self.minsize):
                     split_here = np.repeat(False, repeats=2, axis=0)
 
                 split_here = np.repeat(False, repeats=2, axis=0)
-                split_here[tmp_nobs[1] >= self.minsize] = True
+                split_here[tmp_nobs.iloc[1] >= self.minsize] = True
 
                 terminal = np.repeat("SPLIT", repeats=2, axis=0)
-                terminal[tmp_nobs[1] < self.minsize] = "LEAF"
-                terminal[tmp_nobs == 0] = "TRASH"
+                terminal[tmp_nobs.iloc[1] < self.minsize] = "LEAF"
+                terminal[tmp_nobs.iloc[1] == 0] = "TRASH"
+
+                if not stop_flag:
+                    children = {
+                        "NODE": [mn+1, mn+2], "NOBS": tmp_nobs.iloc[1], "FILTER": tmp_filter, "TERMINAL": terminal}
+                    for i in range(1, len(self.z_pos) + 2):
+                        children[f'b0.{i}'] = [
+                            splitting.loc[1 + i, tmp_splitter]]*2
+
+                    children = pd.DataFrame(children)
+
+                else:
+                    children = None
+
+                tree_info.loc[j, "TERMINAL"] = "PARENT"
+
+                if stop_flag:
+                    tree_info.loc[j, "TERMINAL"] = "LEAF"
+
+                tree_info = pd.concat(
+                    [tree_info, children]).reset_index(drop=True)
+
+                do_splits = not (all(tree_info['TERMINAL'] != "SPLIT"))
+
+                all_stop_flags.append(stop_flag)
 
                 # Error handling! check if the splitting rule has already been invoked
                 # split_here  <- !sapply(tmp_filter,
@@ -507,7 +541,8 @@ class MacroRandomForest:
 
                 # tmp_nobs =
 
-            self.do_splits = False
+            if all(all_stop_flags):
+                do_splits = False
 
     def _splitter_mrf(self, x):
 
@@ -528,12 +563,12 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1] : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
