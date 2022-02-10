@@ -513,18 +513,18 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
-                print(self.min_leaf_fracz*z.shape[1])
-                print(len(splits) - self.min_leaf_fracz*z.shape[1])
-                print(len(samp))
                 splits = np.quantile(samp, np.arange(
-                    0.01, 1, int(max(1, self.ET_rate*len(samp)))))
+                    0.01, 1, int((1-0.01)/(max(1, self.ET_rate*len(samp))))))
+
+                print(len(splits))
+
                 the_seq = np.arange(0, len(splits))
 
         reg_mat = np.identity(z.shape[1])*self.regul_lambda
