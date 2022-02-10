@@ -30,8 +30,7 @@ class MacroRandomForest:
 
         # Dataset handling
         self.data, self.x_pos, self.oos_pos, self.y_pos = data, x_pos, oos_pos, y_pos
-        self.data.columns = [i for i in range(
-            len(data.columns)] 
+        self.data.columns = [i for i in range(len(data.columns))]
 
         # Properties of the tree
         self.minsize, self.mtry_frac, self.min_leaf_frac_of_x = minsize, mtry_frac, min_leaf_frac_of_x
@@ -358,10 +357,10 @@ class MacroRandomForest:
         self.rw_regul_dat = pd.DataFrame(
             data_ori.iloc[: self.oos_pos[0] - 1, [0] + list(self.z_pos)])
 
-        self.row_of_ones = pd.Series([1]*len(data), index=data.index)
+        row_of_ones = pd.Series([1]*len(data), index=data.index)
 
-        self.X = pd.concat([self.row_of_ones,
-                            data.iloc[:, list(self.x_pos)]], axis=1)
+        X = pd.concat([row_of_ones,
+                       data.iloc[:, list(self.x_pos)]], axis=1)
 
         self.y = data.iloc[:, self.y_pos]
 
@@ -395,15 +394,10 @@ class MacroRandomForest:
                 if tree_info.loc[j, "FILTER"] != None:
                     # subset data according to the filter
 
-                    print("self.data" + tree_info.loc[j, "FILTER"])
-
-                    print(self.data)
-                    self.this_data = self.data[eval(
+                    self.this_data = data[eval(
                         "self.data" + tree_info.loc[j, "FILTER"])]
 
                     self.column_binded_data = data
-
-                    # print(len())
 
                     self.column_binded_data.insert(
                         0, "rando_vec", self.rando_vec)
@@ -415,8 +409,8 @@ class MacroRandomForest:
 
                     # Get the design matrix
 
-                    self.X = self.this_data.iloc[:, self.x_pos]
-                    self.X.insert(0, "Intercept", [1]*len(self.X))
+                    X = self.this_data.iloc[:, self.x_pos]
+                    X.insert(0, "Intercept", [1]*len(X))
                     self.y = self.this_data.iloc[:, self.y_pos]
                     self.z = self.this_data.iloc[:, self.z_pos]
 
@@ -425,6 +419,7 @@ class MacroRandomForest:
                             self.weights[self.whos_who]*self.z)
                         self.y = pd.DataFrame(
                             self.weights[self.whos_who]*np.matrix(self.y))
+
                 else:
                     self.this_data = data
                     self.whos_who = self.rando_vec
@@ -437,7 +432,7 @@ class MacroRandomForest:
                 self.old_b0 = tree_info.loc[j, "b0.1"]
 
                 ############## Select potential candidates for this split ###############
-                self.SET = self.X.iloc[:, 1:]  # all X's but the intercept
+                self.SET = X.iloc[:, 1:]  # all X's but the intercept
 
                 # if(y.pos<trend.pos){trend.pos=trend.pos-1} #so the user can specify trend pos in terms of position in the data matrix, not S_t
                 # modulation option
@@ -470,8 +465,6 @@ class MacroRandomForest:
 
                 mn = max(tree_info['NODE'])
 
-                df_to_filter = self.this_data
-
                 tmp_filter = [f"[{tmp_splitter}] >= {splitting.loc[1, tmp_splitter]}",
                               f"[{tmp_splitter}] < {splitting.loc[1, tmp_splitter]}"]
 
@@ -484,11 +477,17 @@ class MacroRandomForest:
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
                 if tree_info.loc[j, "FILTER"] != None:
-                    tmp_filter = tmp_filter.append(
-                        tree_info.loc[j, 'FILTER'])
+                    tmp_filter = [filterr + " & " + tree_info.loc[j, 'FILTER']
+                                  for filterr in tmp_filter]
 
                 tmp_df = pd.DataFrame(tmp_filter).transpose()
 
+                # print(
+                #     len(self.this_data[eval("self.this_data" + tmp_filter[1])]))
+
+                print([tmp_filter[i].split("&")
+                      for i in range(len(tmp_filter))])
+                      
                 nobs = [len(self.this_data[eval("self.this_data" + tmp_filter[i])])
                         for i in range(len(tmp_filter))]
 
@@ -498,6 +497,7 @@ class MacroRandomForest:
                     split_here = np.repeat(False, repeats=2, axis=0)
 
                 split_here = np.repeat(False, repeats=2, axis=0)
+
                 split_here[tmp_nobs.iloc[1] >= self.minsize] = True
 
                 terminal = np.repeat("SPLIT", repeats=2, axis=0)
@@ -552,7 +552,8 @@ class MacroRandomForest:
 
         splits = sorted(uni_x)
 
-        z = np.insert(np.matrix(self.z), 0, self.row_of_ones, axis=1)
+        z = np.insert(np.matrix(self.z), 0, pd.Series(
+            [1]*len(self.z), index=self.z.index), axis=1)
         y = np.matrix(self.y)
 
         sse = np.repeat(np.inf, repeats=len(uni_x), axis=0)
@@ -563,12 +564,13 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
