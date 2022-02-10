@@ -410,8 +410,9 @@ class MacroRandomForest:
                     # Get the design matrix
 
                     X = self.this_data.iloc[:, self.x_pos]
-                    display(X)
+
                     X.insert(0, "Intercept", [1]*len(X))
+
                     self.y = self.this_data.iloc[:, self.y_pos]
                     self.z = self.this_data.iloc[:, self.z_pos]
 
