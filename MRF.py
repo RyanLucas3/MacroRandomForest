@@ -9,7 +9,7 @@ import pandas as pd
 class MacroRandomForest:
 
     '''
-    Open Source implementation of Macroeconomic Random Forest, developed by Phillipe Goulet Coulombe.
+    Open Source implementation of Macroeconomic Random Forest.
     This class runs MRF, where RF is employed to generate generalized time-varying parameters
     For a linear (macroeconomic) equation. See: https://arxiv.org/pdf/2006.12724.pdf for more details.
     '''
@@ -218,14 +218,17 @@ class MacroRandomForest:
             [np.zeros(shape=self.avg_beta.shape)]*self.B)
 
         self.betas_draws_nonOVF = self.beta_draws
+
         self.betas_shu = np.stack(
             [np.zeros(shape=self.avg_beta.shape)]*(len(self.x_pos)+1))
+
         self.betas_shu_nonOVF = np.stack(
             [np.zeros(shape=self.avg_beta.shape)]*(len(self.x_pos)+1))
 
         self.avg_beta_nonOVF = self.avg_beta
 
         self.forest = []
+
         self.random_vecs = []
 
     def _ensemble_loop(self):
@@ -314,6 +317,7 @@ class MacroRandomForest:
         # The original basis for this code is taken from publicly available code for a simple tree by André Bleier.
         # Standardize data (remeber, we are doing ridge in the end)
         std_stuff = standard(self.data)
+
         data = std_stuff["Y"]
 
         # Adjust prior.mean according to standarization
@@ -324,9 +328,10 @@ class MacroRandomForest:
             self.prior_mean[1] = (self.prior_mean[1]-std_stuff["mean"][:, self.y_pos] +
                                   std_stuff["mean"][:, self.z_pos]@self.prior_mean[-1])/std_stuff["std"][:, self.y_pos]
 
+        # Just a simple/convenient way to detect you're using BB or BBB rather than sub-sampling
         if min(self.rando_vec) < 0:
             self.weights = self.rando_vec
-            self.rando_vec = np.arange(1, min(self.oos_pos))
+            self.rando_vec = np.arange(0, min(self.oos_pos))
             self.bayes = True
 
         else:
@@ -336,26 +341,30 @@ class MacroRandomForest:
             self.minsize = 2*self.min_leaf_fracz*(len(self.z_pos)+1)+2
 
         # coerce to a dataframe
-        self.data_ori = pd.DataFrame(self.data)
-        self.noise = 0.00000015 * \
-            np.random.normal(size=len(self.data.iloc[self.rando_vec, :]))
+        data_ori = pd.DataFrame(data)
 
-        data = pd.DataFrame(self.data)
+        self.noise = 0.00000015 * \
+            np.random.normal(size=len(self.rando_vec))
+
+        data = pd.DataFrame(data)
 
         data = data.iloc[self.rando_vec,
                          :].add(self.noise, axis=0)
 
         self.rw_regul_dat = pd.DataFrame(
-            self.data_ori.iloc[: self.oos_pos[0] - 1, [0] + list(self.z_pos)])
+            data_ori.iloc[: self.oos_pos[0] - 1, [0] + list(self.z_pos)])
 
         self.row_of_ones = pd.Series([1]*len(data), index=data.index)
 
         self.X = pd.concat([self.row_of_ones,
                             data.iloc[:, list(self.x_pos)]], axis=1)
+
         self.y = data.iloc[:, self.y_pos]
+
         self.z = data.iloc[:, self.z_pos]
 
         if self.bayes:
+
             self.z = pd.DataFrame(self.weights*self.z)
             self.y = pd.DataFrame(self.weights*self.y)
 
@@ -370,12 +379,14 @@ class MacroRandomForest:
         self.tree_info = pd.DataFrame(self.tree_info, index=[0])
 
         while self.do_splits:
+
             self.to_calculate = self.tree_info[self.tree_info['TERMINAL']
                                                == "SPLIT"].index.tolist()
 
             self.all_stop_flags = None
 
             for j in self.to_calculate:
+
                 # Handle root node
                 if self.tree_info.loc[j, "FILTER"] != None:
                     # subset data according to the filter
@@ -388,6 +399,7 @@ class MacroRandomForest:
 
                     self.find_out_who = self.column_binded_data[self.column_binded_data ==
                                                                 self.tree_info.loc[j, "FILTER"]]
+
                     self.whos_who = self.find_out_who.iloc[:, 1]
 
                     # Get the design matrix
@@ -404,7 +416,9 @@ class MacroRandomForest:
                 else:
                     self.this_data = data
                     self.whos_who = self.rando_vec
+
                     if self.bayes:
+
                         self.this_data = self.weights * self.data
 
                 ####### INTERNAL NOTE: ASK PHILLIPE ABOUT THIS b0 thing ######
@@ -425,6 +439,7 @@ class MacroRandomForest:
                 ####### INTERNAL NOTE: ASK PHILLIPE ABOUT prob.vec. Currently it looks like [1,1,1,1,..., 1, 4] ######
                 prob_vec = np.array([value/sum(prob_vec)
                                      for value in prob_vec])
+
                 ### Does this just mean that column has a 4x prob of selection? In python this doesnt work the same ###
 
                 # classic mtry move
@@ -498,13 +513,16 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1]]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+
+                print(self.min_leaf_fracz*z.shape[1])
+                print(len(splits) - self.min_leaf_fracz*z.shape[1])
+                print(len(samp))
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, int(max(1, self.ET_rate*len(samp)))))
                 the_seq = np.arange(0, len(splits))
