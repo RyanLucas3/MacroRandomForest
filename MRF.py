@@ -4,6 +4,7 @@ from tkinter import N
 from turtle import down
 import numpy as np
 import pandas as pd
+import sys
 
 
 class MacroRandomForest:
@@ -513,17 +514,15 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
-                    0.01, 1, int((1-0.01)/(max(1, self.ET_rate*len(samp))))))
-
-                print(len(splits))
+                    0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
 
                 the_seq = np.arange(0, len(splits))
 
@@ -534,7 +533,14 @@ class MacroRandomForest:
             reg_mat = np.diag(np.array(self.prior_var))*self.regul_lambda
 
         if len(self.prior_mean) == 0:
+
             b0 = np.linalg.solve(np.matmul(z.T, z) + reg_mat, z.T@y.T)
+
+        else:
+
+            # WIP #
+            b0 = np.linalg.solve(np.matmul(
+                z.T, z) + reg_mat, np.matmul(z.T, y - z @ self.prior_mean)) + self.prior_mean
 
         nrrd = self.rw_regul_dat.shape[0]
         ncrd = self.rw_regul_dat.shape[1]
@@ -548,6 +554,7 @@ class MacroRandomForest:
             if len(id1) >= self.min_leaf_fracz*z.shape[1] and len(id2) >= self.min_leaf_fracz*z.shape[1]:
                 Id = id1
                 yy = y.take([Id])
+
                 zz = z[Id, :]
                 zz_privy = zz
 
@@ -572,10 +579,12 @@ class MacroRandomForest:
                         everybody2 = set.intersect(everybody2, self.rando_vec)
 
                     if len(everybody) == 0:
+                        print(1)
                         y_neighbors = None
                         z_neighbors = None
 
                     else:
+                        print(1)
                         y_neighbors = np.matrix(
                             self.rw_regul*self.rw_regul_dat[everybody, 0])
                         z_neighbours = np.matrix(self.rw_regul * np.hstack(
@@ -659,6 +668,7 @@ class MacroRandomForest:
 
                     p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) +
                                                                 reg_mat, np.matmul(zz.T, yy.T)) + self.HRW*b0)
+
                 else:
 
                     pass
@@ -669,11 +679,12 @@ class MacroRandomForest:
 
                    ###### INTERNAL NOTE: RYAN ######
 
-            sse[i] = sum((y.take([id1]) - p1) ** 2) + \
-                sum((y.take([id2]) - p2) ** 2)
+            sse[i] = sum(np.subtract(list(y.take([id1]).flat), list(p1.flat)) ** 2) + \
+                sum(np.subtract(list(y.take([id2]).flat), list(p2.flat)) ** 2)
 
         # implement a mild preference for 'center' splits, allows trees to run deeper
         sse = DV_fun(sse, DV_pref=0.15)
+
         split_at = splits[sse.argmin()]
 
         return {"sse": min(sse), "split": split_at, "b0": b0}
