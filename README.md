@@ -1,6 +1,5 @@
 # MacroRandomForest
 
----------------------------------------------------------------------------------------------------------------------------------
 *"Machine Learning is very useful for macroeconomic forecasting but not so useful for macroeconomics" - Phillipe Goulet Coulombe*
 ---------------------------------------------------------------------------------------------------------------------------------
 
