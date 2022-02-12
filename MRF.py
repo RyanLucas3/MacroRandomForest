@@ -265,6 +265,33 @@ class MacroRandomForest:
 
             self.rt_output = self._one_MRF_tree()
 
+            if self.keep_forest:
+                self.forest[[b]] = self.rt_output['tree']
+                self.random_vec[[b]] = self.rando_vec
+                pass
+
+            # if(bootstrap.opt==3 |bootstrap.opt==4){ #for Bayesian Bootstrap, gotta impose a cutoff on what is OOS and what is not.
+            #     rando.vec=which(chosen.ones.plus>quantile(chosen.ones.plus,.5))
+            #     rt.output$betas[is.na(rt.output$betas)]=0
+            #     rt.output$pred[is.na(rt.output$pred)]=0
+            #     }
+
+            self.commitee[b, :] = self.rt_output['pred']
+            in_out = np.repeat(0, repeats=len(self.data))
+
+            for i in self.rando_vec:
+                in_out[-i] = 1
+
+            self.whos_in_mat[:, b] = in_out
+
+            self.avg_beta = ((b-1)/b)*self.avg_pred + \
+                (1/b)*self.rt_output['pred']
+            self.betas_draws[b] = self.rt_output['betas']
+
+            self.rt_output['betas'][np.where(in_out == 0), :]
+
+            stop()
+
     def _process_subsampling_selection(self):
         '''
         Processes user choice for subsampling technique.
@@ -589,11 +616,6 @@ class MacroRandomForest:
 
         ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
 
-        # if self.VI_rep > 0:
-        #     whos_in = np.repeat(np.nan, repeats = len(self.x_pos))
-        #     for k in range(0, len(self.x_pos)):
-        #         whos_in[k] =
-
         beta_bank_shu = np.stack(
             [np.zeros(shape=beta_bank.shape)]*(len(self.x_pos)+1))
         fitted_shu = np.zeros(shape=(len(fitted), (len(self.x_pos) + 1)))
@@ -628,14 +650,13 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
 
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
