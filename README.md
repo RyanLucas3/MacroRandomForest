@@ -1,6 +1,6 @@
 # MacroRandomForest
 
-"Machine Learning is very useful for macroeconomic forecasting but not so useful for macroeconomics" - Phillipe Goulet Coulombe
+"Machine Learning is useful for macroeconomic forecasting but not so useful for macroeconomics" - Phillipe Goulet Coulombe
 ---------------------------------------------------------------------------------------------------------------------------------
 
 Ever wanted the power of a random forest with the interpretability of a linear regression model? Well now you can...
