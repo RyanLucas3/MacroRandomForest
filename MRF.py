@@ -570,18 +570,22 @@ class MacroRandomForest:
         fitted_scaled = fitted
 
         fitted = fitted * \
-            self.std_stuff['std'][self.y_pos] + \
-            self.std_stuff['mean'][self.y_pos]
+            self.std_stuff['std'].flat[self.y_pos] + \
+            self.std_stuff['mean'].flat[self.y_pos]
+
         betas = beta_bank
-        betas[:, 0] = beta_bank[:, 0]*self.std_stuff['std'][self.y_pos] + \
-            self.std_stuff['mean'][self.y_pos]
+        betas[:, 0] = beta_bank[:, 0]*self.std_stuff['std'].flat[self.y_pos] + \
+            self.std_stuff['mean'].flat[self.y_pos]
 
         ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
-        for kk in range(2, len(betas.columns)):
-            betas[:, kk] = beta_bank[:, kk]*self.std_stuff['std'][self.y_pos] / \
-                self.std_stuff['std'][self.z_pos[kk-1]]  # kk - 2? Check
-            betas[: 0] = betas[:, 0] - betas[:, kk] * \
-                self.std_stuff['mean'][self.z_pos[kk-1]]
+
+        for kk in range(1, betas.shape[1]):
+
+            betas[:, kk] = beta_bank[:, kk]*self.std_stuff['std'].flat[self.y_pos] / \
+                self.std_stuff['std'].flat[self.z_pos[kk-1]]  # kk - 2? Check
+
+            betas[:, 0] = betas[:, 0] - betas[:, kk] * \
+                self.std_stuff['mean'].flat[self.z_pos[kk-1]]
 
         ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
 
@@ -595,9 +599,9 @@ class MacroRandomForest:
         fitted_shu = np.zeros(shape=(len(fitted), (len(self.x_pos) + 1)))
 
         return {"tree": tree_info[tree_info['TERMINAL'] == "LEAF"],
-                "fit": fitted.iloc[:self.oos_pos[0]],
-                "pred": fitted.iloc[self.oos_pos],
-                "data": self.ori_data,
+                "fit": fitted[:self.oos_pos[0]],
+                "pred": fitted[self.oos_pos],
+                "data": self.data_ori,
                 "betas": betas,
                 'betas_shu': beta_bank_shu,
                 "fitted_shu": fitted_shu}
@@ -624,13 +628,14 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
 
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
@@ -906,13 +911,14 @@ class MacroRandomForest:
                         b0 = np.transpose(
                             np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)]))
                         ###### INTERNAL NOTE: CHECK INDEXING HERE ########
+
                     else:
 
                         beta_hat = np.linalg.solve(
                             np.matmul(zz.T, zz) + reg_mat, np.matmul(zz.T, yy).T)
 
                         b0 = np.transpose(
-                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)]))
+                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
 
                     if len(ind_all) == 1:
                         if np.matrix(np.transpose(zz_all)).shape[0] != 1:
@@ -920,8 +926,19 @@ class MacroRandomForest:
 
                         fitted[ind_all] = zz_all @ ((1-self.HRW)
                                                     * beta_hat + self.HRW*b0)
-                        beta_bank[ind_all, ] = np.tile(A=np.transpose(
-                            (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
+                    else:
+                        if zz_all.shape[1] != len(b0):
+                            zz_all = zz_all.T
+
+                        fitted_vals = list(zz_all@((1-self.HRW)
+                                                   * beta_hat+self.HRW*b0))
+
+                        for i in range(len(fitted_vals)):
+
+                            fitted[ind[i]] = fitted_vals[i]
+
+                    beta_bank[ind_all, :] = np.tile(A=np.transpose(
+                        (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
 
         return {"fitted": fitted, "beta_bank": beta_bank}
 
