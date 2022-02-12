@@ -568,35 +568,38 @@ class MacroRandomForest:
         ###################################################################################
 
         fitted_scaled = fitted
+
         fitted = fitted * \
             self.std_stuff['std'][self.y_pos] + \
             self.std_stuff['mean'][self.y_pos]
         betas = beta_bank
         betas[:, 0] = beta_bank[:, 0]*self.std_stuff['std'][self.y_pos] + \
             self.std_stuff['mean'][self.y_pos]
-        
+
         ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
         for kk in range(2, len(betas.columns)):
             betas[:, kk] = beta_bank[:, kk]*self.std_stuff['std'][self.y_pos] / \
                 self.std_stuff['std'][self.z_pos[kk-1]]  # kk - 2? Check
-            betas[: 0] = betas[:, 0] - betas[:, kk] * self.std_stuff['mean'][self.z_pos[kk-1]]
-            
+            betas[: 0] = betas[:, 0] - betas[:, kk] * \
+                self.std_stuff['mean'][self.z_pos[kk-1]]
+
         ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
 
         # if self.VI_rep > 0:
         #     whos_in = np.repeat(np.nan, repeats = len(self.x_pos))
         #     for k in range(0, len(self.x_pos)):
-        #         whos_in[k] = 
+        #         whos_in[k] =
 
-        beta_bank_shu = np.stack([np.zeros(shape=beta_bank.shape)]*(len(self.x_pos)+1))
-        fitted_shu = np.zeros(shape = (len(fitted), (len(self.x_pos) + 1)))
+        beta_bank_shu = np.stack(
+            [np.zeros(shape=beta_bank.shape)]*(len(self.x_pos)+1))
+        fitted_shu = np.zeros(shape=(len(fitted), (len(self.x_pos) + 1)))
 
-        return {"tree": tree_info[tree_info['TERMINAL'] == "LEAF"], 
-                "fit": fitted.iloc[:self.oos_pos[0]], 
-                "pred": fitted.iloc[self.oos_pos], 
-                "data": self.ori_data, 
-                "betas": betas, 
-                'betas_shu': beta_bank_shu, 
+        return {"tree": tree_info[tree_info['TERMINAL'] == "LEAF"],
+                "fit": fitted.iloc[:self.oos_pos[0]],
+                "pred": fitted.iloc[self.oos_pos],
+                "data": self.ori_data,
+                "betas": betas,
+                'betas_shu': beta_bank_shu,
                 "fitted_shu": fitted_shu}
 
         # avg_pred = ((b-1)/b)*avg_pred + (1/b)*fitted[self.oos_pos]
@@ -621,15 +624,13 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
 
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
@@ -678,7 +679,7 @@ class MacroRandomForest:
                     everybody = everybody[everybody < nrrd + 1]
 
                     if self.no_rw_trespassing:
-                        everybody = set.intersection(everybody, self.rando_vec)
+                        everybody = np.intersect1d(everybody, self.rando_vec)
                     everybody2 = (self.whoswho[Id]+2).union(self.whoswho[Id]-2)
                     everybody2 = [
                         a for a in everybody2 if not a in self.whos_who]
@@ -687,7 +688,7 @@ class MacroRandomForest:
                     everybody2 = everybody2[everybody2 < nrrd + 1]
 
                     if self.no_rw_trespassing:
-                        everybody2 = set.intersect(everybody2, self.rando_vec)
+                        everybody2 = np.intersect1d(everybody2, self.rando_vec)
 
                     if len(everybody) == 0:
                         y_neighbors = None
@@ -747,7 +748,7 @@ class MacroRandomForest:
                     everybody = everybody[everybody < nrrd + 1]
 
                     if self.no_rw_trespassing:
-                        everybody = set.intersection(everybody, self.rando_vec)
+                        everybody = np.intersect1d(everybody, self.rando_vec)
                     everybody2 = (self.whoswho[Id]+2).union(self.whoswho[Id]-2)
                     everybody2 = [
                         a for a in everybody2 if not a in self.whos_who]
@@ -756,7 +757,7 @@ class MacroRandomForest:
                     everybody2 = everybody2[everybody2 < nrrd + 1]
 
                     if self.no_rw_trespassing:
-                        everybody2 = set.intersection(
+                        everybody2 = np.intersect1d(
                             everybody2, self.rando_vec)
 
                     if len(everybody) == 0:
@@ -840,30 +841,36 @@ class MacroRandomForest:
                 # Adds RW prior in the mix
 
                 if self.rw_regul > 0:
-                    everybody = np.unique((ind+1).append(ind-1))
+
+                    everybody = np.unique(
+                        np.append(np.array(ind)+1, np.array(ind)-1))
+
                     everybody = [i for i in everybody if i not in ind_all]
                     everybody = [i for i in everybody if i > 0]
                     everybody = [i for i in everybody if i <
-                                 len(self.rw_regul_dat) + 1]
+                                 len(self.rw_regul_dat)]
 
-                    everybody2 = np.unique((ind+2).append(ind-2))
+                    everybody2 = np.unique(
+                        np.append(np.array(ind)+2, np.array(ind)-2))
                     everybody2 = [i for i in everybody2 if i not in ind_all]
                     everybody2 = [i for i in everybody2 if i > 0]
                     everybody2 = [i for i in everybody2 if i <
-                                  len(self.rw_regul_dat) + 1]
+                                  len(self.rw_regul_dat)]
                     everybody2 = [i for i in everybody2 if i not in everybody]
 
                     if self.no_rw_trespassing:
-                        everybody2 = set.intersection(
+                        everybody2 = np.intersect1d(
                             everybody, self.rando_vec)
 
                     if len(everybody) == 0:
                         y_neighbors = None
                         z_neighbors = None
                     else:
+
                         y_neighbors = np.matrix(
                             self.rw_regul * self.rw_regul_dat.iloc[everybody, 0])
-                        z_neighbors = np.matrix(self.rw_regul * np.hstack([np.repeat(1, repeats=len(everybody)), np.matrix(
+
+                        z_neighbors = np.matrix(self.rw_regul * np.column_stack([np.repeat(1, repeats=len(everybody)).T, np.matrix(
                             self.rw_regul_dat.iloc[everybody, 1: len(self.rw_regul_dat.columns)])]))
 
                     if len(everybody2) == 0:
@@ -872,22 +879,26 @@ class MacroRandomForest:
 
                     else:
                         y_neighbors2 = np.matrix(
-                            self.rw_regul**2 * self.rw_regul_dat.iloc[everybody, 0])
-                        z_neighbors2 = np.matrix(self.rw_regul**2 * np.hstack([np.repeat(1, repeats=len(
-                            everybody2)), np.matrix(self.rw_regul_dat.iloc[everybody2, 1: len(self.rw_regul_dat.columns)])]))
+                            self.rw_regul**2 * self.rw_regul_dat.iloc[everybody2, 0])
+                        z_neighbors2 = np.matrix(self.rw_regul**2 * np.column_stack([np.repeat(1, repeats=len(
+                            everybody2)).T, np.matrix(self.rw_regul_dat.iloc[everybody2, 1: len(self.rw_regul_dat.columns)])]))
 
-                    yy = yy.append(y_neighbors).append(y_neighbors2)
+                    yy = np.append(
+                        np.append(np.array(yy), y_neighbors), y_neighbors2)
 
                     if len(zz) == len(self.z_pos) + 1:
-                        zz = np.hstack(
-                            [np.transpose(zz), z_neighbors, z_neighbors2])
-                    else:
-                        zz = np.hstack([zz, z_neighbors, z_neighbors2])
 
-                    if self.prior_var != None:
+                        zz = np.vstack(
+                            [np.transpose(zz), z_neighbors, z_neighbors2])
+
+                    else:
+                        zz = np.vstack([zz, z_neighbors, z_neighbors2])
+
+                    if len(self.prior_var) != 0:
                         reg_mat = np.diag(
                             np.array(self.prior_var))*self.regul_lambda
                         prior_mean_vec = self.prior_mean
+
                         beta_hat = np.linalg.solve(np.matmul(
                             zz.T, zz) + reg_mat, np.matmul(zz.T, yy - zz @ prior_mean_vec)) + prior_mean_vec
 
@@ -896,8 +907,10 @@ class MacroRandomForest:
                             np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)]))
                         ###### INTERNAL NOTE: CHECK INDEXING HERE ########
                     else:
+
                         beta_hat = np.linalg.solve(
-                            np.matmul(zz.T, zz) + reg_mat, np.matmul(zz.T, yy))
+                            np.matmul(zz.T, zz) + reg_mat, np.matmul(zz.T, yy).T)
+
                         b0 = np.transpose(
                             np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)]))
 
