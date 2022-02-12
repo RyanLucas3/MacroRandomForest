@@ -558,6 +558,49 @@ class MacroRandomForest:
 
         pga = self._pred_given_tree(leafs)
 
+        beta_bank = pga['beta_bank']
+        fitted = pga['fitted']
+
+        ###################################################################################
+        ###################################################################################
+        ########################## Back to original units #################################
+        ###################################################################################
+        ###################################################################################
+
+        fitted_scaled = fitted
+        fitted = fitted * \
+            self.std_stuff['std'][self.y_pos] + \
+            self.std_stuff['mean'][self.y_pos]
+        betas = beta_bank
+        betas[:, 0] = beta_bank[:, 0]*self.std_stuff['std'][self.y_pos] + \
+            self.std_stuff['mean'][self.y_pos]
+        
+        ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
+        for kk in range(2, len(betas.columns)):
+            betas[:, kk] = beta_bank[:, kk]*self.std_stuff['std'][self.y_pos] / \
+                self.std_stuff['std'][self.z_pos[kk-1]]  # kk - 2? Check
+            betas[: 0] = betas[:, 0] - betas[:, kk] * self.std_stuff['mean'][self.z_pos[kk-1]]
+            
+        ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
+
+        # if self.VI_rep > 0:
+        #     whos_in = np.repeat(np.nan, repeats = len(self.x_pos))
+        #     for k in range(0, len(self.x_pos)):
+        #         whos_in[k] = 
+
+        beta_bank_shu = np.stack([np.zeros(shape=beta_bank.shape)]*(len(self.x_pos)+1))
+        fitted_shu = np.zeros(shape = (len(fitted), (len(self.x_pos) + 1)))
+
+        return {"tree": tree_info[tree_info['TERMINAL'] == "LEAF"], 
+                "fit": fitted.iloc[:self.oos_pos[0]], 
+                "pred": fitted.iloc[self.oos_pos], 
+                "data": self.ori_data, 
+                "betas": betas, 
+                'betas_shu': beta_bank_shu, 
+                "fitted_shu": fitted_shu}
+
+        # avg_pred = ((b-1)/b)*avg_pred + (1/b)*fitted[self.oos_pos]
+
     def _splitter_mrf(self, x):
 
         cons_w = 0.01
@@ -820,8 +863,58 @@ class MacroRandomForest:
                     else:
                         y_neighbors = np.matrix(
                             self.rw_regul * self.rw_regul_dat.iloc[everybody, 0])
-                        # z_neighbors = np.matrix(self.rw_regul * )
-                        pass
+                        z_neighbors = np.matrix(self.rw_regul * np.hstack([np.repeat(1, repeats=len(everybody)), np.matrix(
+                            self.rw_regul_dat.iloc[everybody, 1: len(self.rw_regul_dat.columns)])]))
+
+                    if len(everybody2) == 0:
+                        y_neighbors2 = None
+                        z_neighbors2 = None
+
+                    else:
+                        y_neighbors2 = np.matrix(
+                            self.rw_regul**2 * self.rw_regul_dat.iloc[everybody, 0])
+                        z_neighbors2 = np.matrix(self.rw_regul**2 * np.hstack([np.repeat(1, repeats=len(
+                            everybody2)), np.matrix(self.rw_regul_dat.iloc[everybody2, 1: len(self.rw_regul_dat.columns)])]))
+
+                    yy = yy.append(y_neighbors).append(y_neighbors2)
+
+                    if len(zz) == len(self.z_pos) + 1:
+                        zz = np.hstack(
+                            [np.transpose(zz), z_neighbors, z_neighbors2])
+                    else:
+                        zz = np.hstack([zz, z_neighbors, z_neighbors2])
+
+                    if self.prior_var != None:
+                        reg_mat = np.diag(
+                            np.array(self.prior_var))*self.regul_lambda
+                        prior_mean_vec = self.prior_mean
+                        beta_hat = np.linalg.solve(np.matmul(
+                            zz.T, zz) + reg_mat, np.matmul(zz.T, yy - zz @ prior_mean_vec)) + prior_mean_vec
+
+                        ###### INTERNAL NOTE: CHECK INDEXING HERE ########
+                        b0 = np.transpose(
+                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)]))
+                        ###### INTERNAL NOTE: CHECK INDEXING HERE ########
+                    else:
+                        beta_hat = np.linalg.solve(
+                            np.matmul(zz.T, zz) + reg_mat, np.matmul(zz.T, yy))
+                        b0 = np.transpose(
+                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)]))
+
+                    if len(ind_all) == 1:
+                        if np.matrix(np.transpose(zz_all)).shape[0] != 1:
+                            zz_all = np.transpose(zz_all)
+
+                        fitted[ind_all] = zz_all @ ((1-self.HRW)
+                                                    * beta_hat + self.HRW*b0)
+                        beta_bank[ind_all, ] = np.tile(A=np.transpose(
+                            (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
+
+        return {"fitted": fitted, "beta_bank": beta_bank}
+
+    def _pred_given_mrf(self):
+
+        return None
 
 
 def DV_fun(sse, DV_pref=0.25):
