@@ -1,13 +1,5 @@
-from codecs import register_error
-from ctypes import Union
-from curses.ascii import BS
-from telnetlib import SE
-from tkinter import N
-from turtle import down
 import numpy as np
 import pandas as pd
-import sys
-import operator
 
 
 class MacroRandomForest:
@@ -274,25 +266,32 @@ class MacroRandomForest:
             #     }
 
             self.commitee[b, :] = self.rt_output['pred']
+            self.avg_pred = pd.DataFrame(self.commitee).mean(axis=0)
+
             in_out = np.repeat(0, repeats=len(self.data))
 
-            for i in self.rando_vec:
-                in_out[-i] = 1
+            for i in range(len(self.data)):
+                if i not in self.rando_vec:
+                    in_out[i] = 1
 
             self.whos_in_mat[:, b] = in_out
 
             self.avg_beta = ((b-1)/b)*np.array(self.avg_pred) + \
                 (1/b)*self.rt_output['pred']
-            self.beta_draws[b] = self.rt_output['betas']
+            self.beta_draws[b, :, :] = self.rt_output['betas']
 
             self.rt_output['betas'][np.where(in_out == 0), :] = np.repeat(
                 0, repeats=len(self.z_pos_effective) + 1)
+
             self.avg_beta_nonOVF = self.avg_beta_nonOVF + \
                 self.rt_output['betas']
+
             self.rt_output['betas'][np.where(in_out == 0), :] = np.repeat(
                 np.nan, repeats=len(self.z_pos_effective) + 1)
+
             self.betas_draws_nonOVF[b] = self.rt_output['betas']
 
+            # print(self.betas_draws_nonOVF[b])
             if self.VI_rep > 0:
                 self.pred_kf[:, self.b, -self.rando_vec]
                 self.betas_shu = ((b-1)/b)*self.betas_shu + \
@@ -672,6 +671,7 @@ class MacroRandomForest:
         pga = self._pred_given_tree(leafs)
 
         beta_bank = pga['beta_bank']
+
         fitted = pga['fitted']
 
         ###################################################################################
