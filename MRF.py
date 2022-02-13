@@ -1,5 +1,6 @@
 from codecs import register_error
 from ctypes import Union
+from curses.ascii import BS
 from telnetlib import SE
 from tkinter import N
 from turtle import down
@@ -64,9 +65,6 @@ class MacroRandomForest:
         self._name_translations()
         self._array_setup()
         self._input_safety_checks()
-
-        ######## TRAIN FOREST ###########
-        self._ensemble_loop()
 
     def _name_translations(self):
         '''
@@ -240,8 +238,7 @@ class MacroRandomForest:
         Core random forest ensemble loop.
         '''
 
-        self.Bs = np.arange(0, 3)
-        # self.Bs = np.arange(1, 2)
+        self.Bs = np.arange(0, self.B)
 
         # The original basis for this code is taken from publicly available code for a simple tree by André Bleier.
         # Standardize data (remeber, we are doing ridge in the end)
@@ -306,7 +303,80 @@ class MacroRandomForest:
 
         how_many_in = pd.DataFrame(self.whos_in_mat).sum(axis=1)
 
-        self.avg_beta_nonOVF = self.avg_beta_nonOVF/np.transpose()
+        self.avg_beta_nonOVF = self.avg_beta_nonOVF / \
+            np.transpose(np.tile(how_many_in, reps=(
+                len(self.z_pos_effective)+1, 1)))
+
+        ###################################################################################
+        ###################################################################################
+        ########################## VI #####################################################
+        ###################################################################################
+        ###################################################################################
+
+        #
+        #  if(!random.z){
+        # if(VI.rep>0){ ....
+        # ...
+        # ...
+        # ...
+        ###################################################################################
+        ###################################################################################
+
+        if self.oos_flag:
+            self.avg_beta_nonOVF = self.avg_beta_nonOVF[-self.fake_pos, :]
+            self.avg_beta = self.avg_beta[-self.fake_pos, :]
+            self.betas_draws_nonOVF = self.betas_draws_nonOVF[-self.fake_pos, :]
+            self.betas_draws = self.betas_draws[-self.fake_pos, :]
+
+            # cancel VI_POOS
+            self.VI_poos = None
+
+            # cancel pred and the commitee
+            self.avg_pred = None
+            self.commitee = None
+
+            self.data = self.data[-self.fake_pos, :]
+
+        if self.random_z:
+            self.VI_betas = None
+            self.VI_betas_nonOVF = None
+            self.VI_oob = None
+            self.VI_poos = None
+            self.impZ = None
+            self.avg_beta = None
+            self.avg_beta_nonOVF = None
+            self.betas_draws = None
+            self.betas_draws_nonOVF = None
+
+        # else:
+
+        return {"YandX": self.data.iloc[:, [self.y_pos] + self.z_pos],
+                "pred_ensemble": self.commitee,
+                "pred": self.avg_pred,
+                # "important_S": self.impZ,
+                "S_names": self.data.iloc[:, self.x_pos].columns,
+                "betas": self.avg_beta_nonOVF,
+                "betas_draws_raw": self.beta_draws,
+                "betas_draws": self.betas_draws_nonOVF,
+                # "VI_betas": self.VI_betas_nonOVF,
+                # "VI_oob": self.VI_oob,
+                # "VI_oos": self.VI_poos,
+                # "VI_betas_raw": self.VI_betas,
+                "model": {"forest": self.forest,
+                          "data": self.data,
+                          "regul_lambda": self.regul_lambda,
+                          "prior_var": self.prior_var,
+                          "prior_mean": self.prior_mean,
+                          "rw_regul": self.rw_regul,
+                          "HRW": self.HRW,
+                          "no_rw_trespassing": self.no_rw_trespassing,
+                          "B": self.B,
+                          "random_vecs": self.random_vecs,
+                          "y_pos": self.y_pos,
+                          "S_pos": self.x_pos,
+                          "x_pos": self.z_pos
+                          }
+                }
 
     def _process_subsampling_selection(self):
         '''
@@ -666,14 +736,13 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
 
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]
-                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
@@ -976,7 +1045,7 @@ class MacroRandomForest:
                                               * beta_hat+self.HRW*b0)
 
                         for i in range(len(fitted_vals)):
-                            fitted[ind_all[i]] = fitted_vals.iloc[i]
+                            fitted[ind_all[i]] = np.array(fitted_vals)[i]
 
                     beta_bank[ind_all, :] = np.tile(A=np.transpose(
                         (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
