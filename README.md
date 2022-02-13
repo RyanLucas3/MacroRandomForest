@@ -13,6 +13,6 @@ MRF has at its core a basic linear regression equation that is intended to expre
 
 Bringing together the linear macro equation with the random forest ML algorithm means that our linear coefficient then nests important time series information. This parameter can provide 1. a time-varying variable importance measure, 2. information about the optimal splitting point, and 3. an indication of the presence of regime-switching and structural breaks in the time series. 
 
-Thus being powerful and directly interpretable, the model can provide value not only to economic forecasters, but also to macroeconomic policy makers.
+Thus being both powerful and directly interpretable, the model can provide value not only to economic forecasters, but also to macroeconomic policy makers.
 
 The full paper corresponding to the implementation can be found here: https://arxiv.org/abs/2006.12724. 
