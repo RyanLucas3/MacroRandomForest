@@ -240,7 +240,8 @@ class MacroRandomForest:
         Core random forest ensemble loop.
         '''
 
-        self.Bs = np.arange(1, self.B + 1)
+        self.Bs = np.arange(0, 3)
+        # self.Bs = np.arange(1, 2)
 
         # The original basis for this code is taken from publicly available code for a simple tree by André Bleier.
         # Standardize data (remeber, we are doing ridge in the end)
@@ -268,7 +269,6 @@ class MacroRandomForest:
             if self.keep_forest:
                 self.forest[[b]] = self.rt_output['tree']
                 self.random_vec[[b]] = self.rando_vec
-                pass
 
             # if(bootstrap.opt==3 |bootstrap.opt==4){ #for Bayesian Bootstrap, gotta impose a cutoff on what is OOS and what is not.
             #     rando.vec=which(chosen.ones.plus>quantile(chosen.ones.plus,.5))
@@ -284,13 +284,29 @@ class MacroRandomForest:
 
             self.whos_in_mat[:, b] = in_out
 
-            self.avg_beta = ((b-1)/b)*self.avg_pred + \
+            self.avg_beta = ((b-1)/b)*np.array(self.avg_pred) + \
                 (1/b)*self.rt_output['pred']
-            self.betas_draws[b] = self.rt_output['betas']
+            self.beta_draws[b] = self.rt_output['betas']
 
-            self.rt_output['betas'][np.where(in_out == 0), :]
+            self.rt_output['betas'][np.where(in_out == 0), :] = np.repeat(
+                0, repeats=len(self.z_pos_effective) + 1)
+            self.avg_beta_nonOVF = self.avg_beta_nonOVF + \
+                self.rt_output['betas']
+            self.rt_output['betas'][np.where(in_out == 0), :] = np.repeat(
+                np.nan, repeats=len(self.z_pos_effective) + 1)
+            self.betas_draws_nonOVF[b] = self.rt_output['betas']
 
-            stop()
+            if self.VI_rep > 0:
+                self.pred_kf[:, self.b, -self.rando_vec]
+                self.betas_shu = ((b-1)/b)*self.betas_shu + \
+                    (1/b)*self.rt_output['betas_shu']
+                self.rt_output['betas_shu'][:, np.where(in_out == 0), :]
+                self.betas_shu_nonOVF = self.betas_shu_nonOVF + \
+                    self.rt_output['betas_shu']
+
+        how_many_in = pd.DataFrame(self.whos_in_mat).sum(axis=1)
+
+        self.avg_beta_nonOVF = self.avg_beta_nonOVF/np.transpose()
 
     def _process_subsampling_selection(self):
         '''
@@ -650,13 +666,14 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
 
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
@@ -945,18 +962,21 @@ class MacroRandomForest:
                         if np.matrix(np.transpose(zz_all)).shape[0] != 1:
                             zz_all = np.transpose(zz_all)
 
-                        fitted[ind_all] = zz_all @ ((1-self.HRW)
-                                                    * beta_hat + self.HRW*b0)
+                        fitted_vals = zz_all @ ((1-self.HRW)
+                                                * beta_hat + self.HRW*b0)
+
+                        for i in range(len(fitted_vals)):
+                            fitted[ind_all[i]] = fitted_vals[i]
+
                     else:
                         if zz_all.shape[1] != len(b0):
                             zz_all = zz_all.T
 
-                        fitted_vals = list(zz_all@((1-self.HRW)
-                                                   * beta_hat+self.HRW*b0))
+                        fitted_vals = zz_all@((1-self.HRW)
+                                              * beta_hat+self.HRW*b0)
 
                         for i in range(len(fitted_vals)):
-
-                            fitted[ind[i]] = fitted_vals[i]
+                            fitted[ind_all[i]] = fitted_vals.iloc[i]
 
                     beta_bank[ind_all, :] = np.tile(A=np.transpose(
                         (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
