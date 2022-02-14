@@ -1,5 +1,27 @@
+from logging import raiseExceptions
 import numpy as np
 import pandas as pd
+import cProfile
+import pstats
+import io
+
+
+def profile(function):
+
+    def inner(*args, **kwargs):
+
+        pr = cProfile.Profile()
+        pr.enable()
+        retval = function(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        # print(s.getvalue())
+        return retval
+
+    return inner
 
 
 class MacroRandomForest:
@@ -714,19 +736,22 @@ class MacroRandomForest:
                 'betas_shu': beta_bank_shu,
                 "fitted_shu": fitted_shu}
 
-        # avg_pred = ((b-1)/b)*avg_pred + (1/b)*fitted[self.oos_pos]
-
     def _splitter_mrf(self, x):
 
         cons_w = 0.01
 
         uni_x = np.unique(x)
 
+        x = np.array(x)
+
         splits = sorted(uni_x)
 
-        z = np.insert(np.matrix(self.z), 0, pd.Series(
-            [1]*len(self.z), index=self.z.index), axis=1)
+        z = np.insert(np.matrix(self.z), 0,
+                      [1]*len(self.z), axis=1)
+
         y = np.matrix(self.y)
+
+        y_as_list = np.array(y.flat)
 
         sse = np.repeat(np.inf, repeats=len(uni_x), axis=0)
         the_seq = np.arange(0, len(splits))
@@ -736,13 +761,15 @@ class MacroRandomForest:
 
         if self.ET_rate != None:
             if self.ET and len(z) > 2*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]: len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
                 the_seq = np.arange(0, len(splits))
 
             elif self.ET == False and len(z) > 4*self.minsize:
-                samp = splits[self.min_leaf_fracz*z.shape[1]                              : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
+                samp = splits[self.min_leaf_fracz*z.shape[1]
+                    : len(splits) - self.min_leaf_fracz*z.shape[1] + 1]
 
                 splits = np.quantile(samp, np.arange(
                     0.01, 1, (1-0.01)/(max(1, self.ET_rate*len(samp)))))
@@ -753,17 +780,20 @@ class MacroRandomForest:
         reg_mat[0, 0] = cons_w*reg_mat[0, 0]
 
         if len(self.prior_var) > 0:
+
             reg_mat = np.diag(np.array(self.prior_var))*self.regul_lambda
 
         if len(self.prior_mean) == 0:
 
-            b0 = np.linalg.solve(np.matmul(z.T, z) + reg_mat, z.T@y.T)
+            z_T = z.T
+            b0 = np.linalg.solve(np.matmul(z_T, z) + reg_mat, z_T@y.T)
 
         else:
 
             # WIP #
-            b0 = np.linalg.solve(np.matmul(
-                z.T, z) + reg_mat, np.matmul(z.T, y - z @ self.prior_mean)) + self.prior_mean
+            z_T = z.T
+            b0 = np.linalg.solve(
+                z_T @ z + reg_mat, np.matmul(z_T, y - z @ self.prior_mean)) + self.prior_mean
 
         nrrd = self.rw_regul_dat.shape[0]
         ncrd = self.rw_regul_dat.shape[1]
@@ -775,16 +805,17 @@ class MacroRandomForest:
             id1 = np.where(x < sp)[0]
             id2 = np.where(x >= sp)[0]
 
-            if len(id1) >= self.min_leaf_fracz*z.shape[1] and len(id2) >= self.min_leaf_fracz*z.shape[1]:
-                Id = id1
-                yy = y.take([Id])
+            min_frac_times_no_cols = self.min_leaf_fracz*z.shape[1]
+            if len(id1) >= min_frac_times_no_cols and len(id2) >= min_frac_times_no_cols:
 
-                zz = z[Id, :]
+                yy = np.array([[y_as_list[i] for i in id1]])
+
+                zz = z[id1, :]
                 zz_privy = zz
 
                 if not self.fast_rw:
-                    everybody = (self.whos_who[Id] +
-                                 1).union(self.whos_who[Id]-1)
+                    everybody = (self.whos_who[id1] +
+                                 1).union(self.whos_who[id1]-1)
                     everybody = [
                         a for a in everybody if not a in self.whos_who]
                     everybody = everybody[everybody > 0]
@@ -792,7 +823,7 @@ class MacroRandomForest:
 
                     if self.no_rw_trespassing:
                         everybody = np.intersect1d(everybody, self.rando_vec)
-                    everybody2 = (self.whoswho[Id]+2).union(self.whoswho[Id]-2)
+                    everybody2 = (self.whoswho[id1]+2).union(self.whoswho[id1]-2)
                     everybody2 = [
                         a for a in everybody2 if not a in self.whos_who]
                     everybody2 = [a for a in everybody2 if not a in everybody]
@@ -809,7 +840,7 @@ class MacroRandomForest:
                     else:
                         y_neighbors = np.matrix(
                             self.rw_regul*self.rw_regul_dat[everybody, 0])
-                        z_neighbours = np.matrix(self.rw_regul * np.hstack(
+                        z_neighbors = np.matrix(self.rw_regul * np.hstack(
                             np.repeat(1, repeats=len(everybody2)),
                             np.matrix(self.rw_regul_dat[everybody2, 1: ncrd+1])))
 
@@ -820,7 +851,7 @@ class MacroRandomForest:
                     else:
                         y_neighbors2 = np.matrix(
                             self.rw_regul ** 2 * self.rw_regul_dat[everybody2, 0])
-                        z_neighbours2 = np.matrix(self.rw_regul ** 2*np.hstack(
+                        z_neighbors2 = np.matrix(self.rw_regul ** 2*np.hstack(
                             np.repeat(1, repeats=len(everybody2)),
                             np.matrix(self.rw_regul_dat[everybody2, 1: ncrd+1])))
 
@@ -833,8 +864,9 @@ class MacroRandomForest:
                     # if len(yy) != zz.shape[0]:
                     #     print(f'{len(yy)} and {zz.shape[0]}')
 
-                    p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) +
-                                                                reg_mat, np.matmul(zz.T, yy.T)) + self.HRW*b0)
+                    zz_T = zz.T
+                    p1 = zz_privy@((1-self.HRW)*np.linalg.solve(zz_T @ zz +
+                                                                reg_mat, zz_T @ yy.T) + self.HRW*b0)
 
                 else:
                     pass
@@ -846,14 +878,14 @@ class MacroRandomForest:
 
                    ###### INTERNAL NOTE: RYAN ######
 
-                Id = id2
-                yy = y.take([Id])
-                zz = z[Id, :]
+                yy = np.array([[y_as_list[i] for i in id2]])
+
+                zz = z[id2, :]
                 zz_privy = zz
 
                 if not self.fast_rw:
                     everybody = (
-                        self.whos_who[Id]+1).union(self.whos_who[Id]-1)
+                        self.whos_who[id2]+1).union(self.whos_who[id2]-1)
                     everybody = [
                         a for a in everybody if not a in self.whos_who]
                     everybody = everybody[everybody > 0]
@@ -861,7 +893,7 @@ class MacroRandomForest:
 
                     if self.no_rw_trespassing:
                         everybody = np.intersect1d(everybody, self.rando_vec)
-                    everybody2 = (self.whoswho[Id]+2).union(self.whoswho[Id]-2)
+                    everybody2 = (self.whoswho[id2]+2).union(self.whoswho[id2]-2)
                     everybody2 = [
                         a for a in everybody2 if not a in self.whos_who]
                     everybody2 = [a for a in everybody2 if not a in everybody]
@@ -885,12 +917,13 @@ class MacroRandomForest:
 
                     yy = yy.append(y_neighbors).append(y_neighbors2)
                     zz = np.vstack(np.matrix(zz), z_neighbors,
-                                   z_neighbors2, None)
+                                   z_neighbours2, None)
 
                 if len(self.prior_mean) == 0:
 
-                    p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) +
-                                                                reg_mat, np.matmul(zz.T, yy.T)) + self.HRW*b0)
+                    zz_T = zz.T
+                    p2 = zz_privy@((1-self.HRW)*np.linalg.solve(zz_T @ zz +
+                                                                reg_mat, zz_T @ yy.T) + self.HRW*b0)
 
                 else:
 
@@ -902,16 +935,16 @@ class MacroRandomForest:
 
                    ###### INTERNAL NOTE: RYAN ######
 
-                sse[i] = sum(np.subtract(list(y.take([id1]).flat), list(p1.flat)) ** 2) + \
+                sse[i] = sum(np.subtract(y_as_list.take(id1), np.array(p1.flat)) ** 2) + \
                     sum(np.subtract(
-                        list(y.take([id2]).flat), list(p2.flat)) ** 2)
+                        y_as_list.take(id2), np.array(p2.flat)) ** 2)
 
         # implement a mild preference for 'center' splits, allows trees to run deeper
         sse = DV_fun(sse, DV_pref=0.15)
 
         split_at = splits[sse.argmin()]
 
-        return pd.Series([min(sse)] + [split_at] + list(b0.flat))
+        return [min(sse)] + [split_at] + list(b0.flat)
 
     def _pred_given_tree(self, leafs):
 
@@ -1016,7 +1049,7 @@ class MacroRandomForest:
 
                         ###### INTERNAL NOTE: CHECK INDEXING HERE ########
                         b0 = np.transpose(
-                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)]))
+                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
                         ###### INTERNAL NOTE: CHECK INDEXING HERE ########
 
                     else:

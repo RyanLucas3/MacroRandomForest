@@ -1,0 +1,12 @@
+digraph {
+	graph [fontname=Arial, nodesep=0.125, ranksep=0.25];
+	node [fontcolor=white, fontname=Arial, height=0, shape=box, style=filled, width=0];
+	edge [fontname=Arial];
+	554 [color="#ff0000", fontcolor="#ffffff", fontsize="10.00", label="~:0:<built-in method builtins.exec>\n100.00%\n(0.00%)\n731×", tooltip="~"];
+	554 -> 923 [arrowsize="1.00", color="#ff0000", fontcolor="#ff0000", fontsize="10.00", label="100.00%\n1×", labeldistance="4.00", penwidth="4.00"];
+	881 [color="#fe0500", fontcolor="#ffffff", fontsize="10.00", label="~:0:<method 'enable' of '_lsprof.Profiler' objects>\n99.56%\n(99.56%)\n1×", tooltip="~"];
+	882 [color="#fe0500", fontcolor="#ffffff", fontsize="10.00", label="MRF:10:inner\n99.56%\n(0.00%)\n1×", tooltip="/Users/ryanlucas/Desktop/MacroRandomForest/MRF.py"];
+	882 -> 881 [arrowsize="1.00", color="#fe0500", fontcolor="#fe0500", fontsize="10.00", label="99.56%\n1×", labeldistance="3.98", penwidth="3.98"];
+	923 [color="#ff0000", fontcolor="#ffffff", fontsize="10.00", label="run:1:<module>\n100.00%\n(0.00%)\n1×", tooltip="run.py"];
+	923 -> 882 [arrowsize="1.00", color="#fe0500", fontcolor="#fe0500", fontsize="10.00", label="99.56%\n1×", labeldistance="3.98", penwidth="3.98"];
+}
