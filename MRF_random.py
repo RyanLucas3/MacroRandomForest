@@ -450,8 +450,6 @@ class MacroRandomForest:
 
             self.rando_vec = sorted(self.chosen_ones_plus.tolist())
 
-            self.rando_vec = np.arange(0, 100)
-
         elif self.bootstrap_opt == 3:  # Plain bayesian bootstrap
             self.chosen_ones = np.random.exponential(
                 scale=1, size=len(self.data.iloc[-self.oos_pos, :]))
@@ -558,7 +556,7 @@ class MacroRandomForest:
                     self.find_out_who = column_binded_data[eval(
                         parsed_filter.replace("data", "column_binded_data"))]
 
-                    self.whos_who = self.find_out_who.iloc[:, 0]
+                    self.whos_who = self.find_out_who.iloc[:, 1]
 
                     # Get the design matrix
 
@@ -608,8 +606,6 @@ class MacroRandomForest:
                 # classic mtry move
                 select_from = np.random.choice(np.arange(0, len(
                     SET.columns)), size=round(len(SET.columns)*self.mtry_frac), p=prob_vec, replace=False)
-
-                select_from = [8, 15, 9, 7, 14]
 
                 if len(SET.columns) < 5:
                     select_from = np.arange(0, len(SET.columns))
@@ -1127,8 +1123,9 @@ def DV_fun(sse, DV_pref=0.25):
     implement a middle of the range preference for middle of the range splits.
     '''
 
-    seq = np.arange(0, len(sse))
+    seq = np.arange(1, len(sse)+1)
     down_voting = 0.5*seq**2 - seq
+
     down_voting = down_voting/np.mean(down_voting)
     down_voting = down_voting - min(down_voting) + 1
     down_voting = down_voting**DV_pref
