@@ -305,7 +305,6 @@ class MacroRandomForest:
 
             self.avg_beta = ((b_avg-1)/b_avg)*np.array(self.avg_pred) + \
                 (1/b_avg)*self.rt_output['pred']
-
             self.beta_draws[b, :, :] = self.rt_output['betas']
 
             self.rt_output['betas'][np.where(in_out == 0), :] = np.repeat(
@@ -451,7 +450,7 @@ class MacroRandomForest:
 
             self.rando_vec = sorted(self.chosen_ones_plus.tolist())
 
-            # self.rando_vec = np.arange(0, 100)
+            self.rando_vec = np.arange(0, 100)
 
         elif self.bootstrap_opt == 3:  # Plain bayesian bootstrap
             self.chosen_ones = np.random.exponential(
@@ -532,6 +531,7 @@ class MacroRandomForest:
 
         tree_info = pd.DataFrame(tree_info, index=[0])
 
+        i = 0
         while do_splits:
 
             self.to_calculate = tree_info[tree_info['TERMINAL']
@@ -558,7 +558,7 @@ class MacroRandomForest:
                     self.find_out_who = column_binded_data[eval(
                         parsed_filter.replace("data", "column_binded_data"))]
 
-                    self.whos_who = self.find_out_who.iloc[:, 1]
+                    self.whos_who = self.find_out_who.iloc[:, 0]
 
                     # Get the design matrix
 
@@ -609,7 +609,7 @@ class MacroRandomForest:
                 select_from = np.random.choice(np.arange(0, len(
                     SET.columns)), size=round(len(SET.columns)*self.mtry_frac), p=prob_vec, replace=False)
 
-                # select_from = [8, 15, 9, 7, 14]
+                select_from = [8, 15, 9, 7, 14]
 
                 if len(SET.columns) < 5:
                     select_from = np.arange(0, len(SET.columns))
@@ -623,8 +623,8 @@ class MacroRandomForest:
 
                 mn = max(tree_info['NODE'])
 
-                tmp_filter = [f"[{tmp_splitter}] >= {round(splitting.loc[1, tmp_splitter],3)}",
-                              f"[{tmp_splitter}] < {round(splitting.loc[1, tmp_splitter],3)}"]
+                tmp_filter = [f"[{tmp_splitter}] >= {splitting.loc[1, tmp_splitter]}",
+                              f"[{tmp_splitter}] < {splitting.loc[1, tmp_splitter]}"]
 
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
@@ -635,20 +635,14 @@ class MacroRandomForest:
                 ######## INTERNAL NOTE: PUT THIS BACK IN ########
 
                 if tree_info.loc[j, "FILTER"] != None:
-                    tmp_filter = ["(" + tree_info.loc[j, 'FILTER'] + ")" + " & " + "(" + filterr + ")"
+                    tmp_filter = ["(" + filterr + ")" + " & " + "(" + tree_info.loc[j, 'FILTER'] + ")"
                                   for filterr in tmp_filter]
 
                 tmp_df = pd.DataFrame(tmp_filter).transpose()
 
                 best_split = splitting[tmp_splitter]
 
-                # nobs = [best_split.iloc[6], best_split.iloc[7]]
-
-                split_filters = [filterr.replace(
-                    "[", "this_data[") for filterr in tmp_filter]
-
-                nobs = [len(this_data[eval(split_filters[i])])
-                        for i in range(len(split_filters))]
+                nobs = [best_split.iloc[6], best_split.iloc[7]]
 
                 tmp_nobs = pd.concat([tmp_df, pd.DataFrame(nobs).transpose()])
 
@@ -656,6 +650,7 @@ class MacroRandomForest:
                     split_here = np.repeat(False, repeats=2, axis=0)
 
                 split_here = np.repeat(False, repeats=2, axis=0)
+
                 split_here[tmp_nobs.iloc[1] >= self.minsize] = True
 
                 terminal = np.repeat("SPLIT", repeats=2, axis=0)
@@ -672,6 +667,9 @@ class MacroRandomForest:
                             splitting.loc[1 + i, tmp_splitter]]*2
 
                     children = pd.DataFrame(children)
+
+                else:
+                    children = None
 
                 tree_info.loc[j, "TERMINAL"] = "PARENT"
 
@@ -744,7 +742,6 @@ class MacroRandomForest:
 
         beta_bank_shu = np.stack(
             [np.zeros(shape=beta_bank.shape)]*(len(self.x_pos)+1))
-
         fitted_shu = np.zeros(shape=(len(fitted), (len(self.x_pos) + 1)))
 
         return {"tree": tree_info[tree_info['TERMINAL'] == "LEAF"],
@@ -959,7 +956,7 @@ class MacroRandomForest:
                     #    zz, yy - zz @ self.prior_mean)) + self.prior_mean+self.HRW*b0)
                     # WIP
 
-                ###### INTERNAL NOTE: RYAN ######
+                   ###### INTERNAL NOTE: RYAN ######
 
                 sse[i] = sum(np.subtract(y_as_list.take(id1), np.array(p1.flat)) ** 2) + \
                     sum(np.subtract(
@@ -988,12 +985,12 @@ class MacroRandomForest:
             ind_all = list(self.data_ori[eval(
                 leafs['FILTER'].iloc[i].replace("[", "self.data_ori["))].index)
 
-            ind = [j for j in ind_all if j <
-                   self.oos_pos[0] if not np.isnan(j)]
+            ind = [i for i in ind_all if i <
+                   self.oos_pos[0] if not np.isnan(i)]
 
             if len(ind_all) > 0:
 
-                yy = self.ori_y.iloc[ind]
+                yy = self.ori_y[ind]
 
                 if len(ind) == 1:
                     zz = np.transpose(np.matrix(self.ori_z.iloc[ind, :]))
@@ -1021,30 +1018,22 @@ class MacroRandomForest:
                     everybody = np.unique(
                         np.append(np.array(ind)+1, np.array(ind)-1))
 
-                    everybody = [j for j in everybody if j not in ind_all]
-                    everybody = [j for j in everybody if j >= 0]
-                    everybody = [j for j in everybody if j <
+                    everybody = [i for i in everybody if i not in ind_all]
+                    everybody = [i for i in everybody if i > 0]
+                    everybody = [i for i in everybody if i <
                                  len(self.rw_regul_dat)]
-
-                    if self.no_rw_trespassing:
-                        everybody = [
-                            j for j in everybody if j in self.rando_vec]
 
                     everybody2 = np.unique(
                         np.append(np.array(ind)+2, np.array(ind)-2))
-
-                    everybody2 = [j for j in everybody2 if j not in ind_all]
-
-                    everybody2 = [j for j in everybody2 if j >= 0]
-
-                    everybody2 = [j for j in everybody2 if j <
+                    everybody2 = [i for i in everybody2 if i not in ind_all]
+                    everybody2 = [i for i in everybody2 if i > 0]
+                    everybody2 = [i for i in everybody2 if i <
                                   len(self.rw_regul_dat)]
-
-                    everybody2 = [j for j in everybody2 if j not in everybody]
+                    everybody2 = [i for i in everybody2 if i not in everybody]
 
                     if self.no_rw_trespassing:
-                        everybody2 = [
-                            j for j in everybody2 if j in self.rando_vec]
+                        everybody2 = np.intersect1d(
+                            everybody, self.rando_vec)
 
                     if len(everybody) == 0:
                         y_neighbors = None
@@ -1070,66 +1059,61 @@ class MacroRandomForest:
                     yy = np.append(
                         np.append(np.array(yy), y_neighbors), y_neighbors2)
 
-                    # if len(zz) == len(self.z_pos) + 1:
+                    if len(zz) == len(self.z_pos) + 1:
 
-                    #     print(1)
+                        zz = np.vstack(
+                            [np.transpose(zz), z_neighbors, z_neighbors2])
 
-                    #     zz = np.vstack(
-                    #         [np.transpose(zz), z_neighbors, z_neighbors2])
+                    else:
+                        zz = np.vstack([zz, z_neighbors, z_neighbors2])
 
-                    #     print(zz)
+                    if len(self.prior_var) != 0:
+                        reg_mat = np.diag(
+                            np.array(self.prior_var))*self.regul_lambda
+                        prior_mean_vec = self.prior_mean
 
-                    # else:
-                    zz = np.vstack([zz, z_neighbors, z_neighbors2])
+                        zz_T = zz.T
 
-                if len(self.prior_var) != 0:
-                    reg_mat = np.diag(
-                        np.array(self.prior_var))*self.regul_lambda
-                    prior_mean_vec = self.prior_mean
+                        beta_hat = np.linalg.solve(
+                            zz_T @ zz + reg_mat, np.matmul(zz_T, yy - zz @ prior_mean_vec)) + prior_mean_vec
 
-                    zz_T = zz.T
+                        ###### INTERNAL NOTE: CHECK INDEXING HERE ########
+                        b0 = np.transpose(
+                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
+                        ###### INTERNAL NOTE: CHECK INDEXING HERE ########
 
-                    beta_hat = np.linalg.solve(
-                        zz_T @ zz + reg_mat, np.matmul(zz_T, yy - zz @ prior_mean_vec)) + prior_mean_vec
+                    else:
 
-                    ###### INTERNAL NOTE: CHECK INDEXING HERE ########
-                    b0 = np.transpose(
-                        np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
-                    ###### INTERNAL NOTE: CHECK INDEXING HERE ########
+                        zz_T = zz.T
+                        beta_hat = np.linalg.solve(
+                            zz_T @ zz + reg_mat, np.matmul(zz_T, yy).T)
 
-                else:
+                        b0 = np.transpose(
+                            np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
 
-                    zz_T = zz.T
+                    if len(ind_all) == 1:
+                        if np.matrix(np.transpose(zz_all)).shape[0] != 1:
+                            zz_all = np.transpose(zz_all)
 
-                    beta_hat = np.linalg.solve(
-                        np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
+                        fitted_vals = zz_all @ ((1-self.HRW)
+                                                * beta_hat + self.HRW*b0)
 
-                    b0 = np.transpose(
-                        np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
+                        for i in range(len(fitted_vals)):
+                            fitted[ind_all[i]] = fitted_vals[i]
 
-                if len(ind_all) == 1:
-                    if np.matrix(np.transpose(zz_all)).shape[0] != 1:
-                        zz_all = np.transpose(zz_all)
+                    else:
 
-                    fitted_vals = zz_all @ ((1-self.HRW)
-                                            * beta_hat + self.HRW*b0)
+                        if zz_all.shape[1] != len(b0):
+                            zz_all = zz_all.T
 
-                    for j in range(len(fitted_vals)):
-                        fitted[ind_all[j]] = fitted_vals[j]
+                        fitted_vals = zz_all@((1-self.HRW)
+                                              * beta_hat+self.HRW*b0)
 
-                else:
+                        for i in range(len(fitted_vals)):
+                            fitted[ind_all[i]] = np.array(fitted_vals)[i]
 
-                    if zz_all.shape[1] != len(b0):
-                        zz_all = zz_all.T
-
-                    fitted_vals = zz_all@((1-self.HRW)
-                                          * beta_hat+self.HRW*b0)
-
-                    for j in range(len(fitted_vals)):
-                        fitted[ind_all[j]] = np.array(fitted_vals)[j]
-
-                beta_bank[ind_all, :] = np.tile(A=np.transpose(
-                    (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
+                    beta_bank[ind_all, :] = np.tile(A=np.transpose(
+                        (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
 
         return {"fitted": fitted, "beta_bank": beta_bank}
 
@@ -1143,9 +1127,8 @@ def DV_fun(sse, DV_pref=0.25):
     implement a middle of the range preference for middle of the range splits.
     '''
 
-    seq = np.arange(1, len(sse)+1)
+    seq = np.arange(0, len(sse))
     down_voting = 0.5*seq**2 - seq
-
     down_voting = down_voting/np.mean(down_voting)
     down_voting = down_voting - min(down_voting) + 1
     down_voting = down_voting**DV_pref
@@ -1167,6 +1150,6 @@ def standard(Y):
     sd_y = Y.std(axis=0, ddof=1)
 
     Y0 = (Y - np.repeat(mean_y,
-                        repeats=size[0], axis=0)) / np.repeat(sd_y, repeats=size[0], axis=0)
+          repeats=size[0], axis=0)) / np.repeat(sd_y, repeats=size[0], axis=0)
 
     return {"Y": Y0, "mean": mean_y, "std": sd_y}
