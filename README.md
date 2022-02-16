@@ -11,7 +11,7 @@ This code base is the Python implementation of "The Macroeconomy as a Random For
 
 MRF has at its core a basic linear regression equation that is intended to express a macroeconomic relationship. Unlike a regular linear regression though, in MRF our predictors are not entirely manually specified. Instead, they are chosen from our state variables by a random forest. 
 
-The beauty is that, bringing together the linear macro equation with the random forest ML algorithm means that our linear coefficient then nests important time series information. This parameter can provide a transparent and time-varying variable importance measure while at the same time accounting for complex non-linearities in the data. 
+The beauty is that, bringing together the linear macro equation with the random forest ML algorithm means that our linear coefficient then nests important time series information. This parameter can provide a transparent variable importance measure while at the same time accounting for complex non-linearities in the data. 
 
 Thus being both powerful and directly interpretable, the model can provide value not only to economic forecasters, but also to macroeconomic policy makers.
 
