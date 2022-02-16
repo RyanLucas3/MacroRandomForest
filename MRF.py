@@ -34,8 +34,8 @@ class MacroRandomForest:
     for a linear (macroeconomic) equation. See: https://arxiv.org/pdf/2006.12724.pdf for more details.
     '''
 
-    def __init__(self, data, x_pos, oos_pos, y_pos=1,
-                 minsize=10, mtry_frac=1/3, min_leaf_frac_of_x=1,
+    def __init__(self, data, x_pos, oos_pos, y_pos=0,
+                 minsize=20, mtry_frac=1/3, min_leaf_frac_of_x=1,
                  VI=False, ERT=False, quantile_rate=None,
                  S_priority_vec=None, random_x=False, trend_push=1, howmany_random_x=1,
                  howmany_keep_best_VI=20, cheap_look_at_GTVPs=True,
@@ -451,7 +451,7 @@ class MacroRandomForest:
 
             self.rando_vec = sorted(self.chosen_ones_plus.tolist())
 
-            # self.rando_vec = np.arange(0, 100)
+            # self.rando_vec = np.arange(50, 150)
 
         elif self.bootstrap_opt == 3:  # Plain bayesian bootstrap
             self.chosen_ones = np.random.exponential(
@@ -506,7 +506,7 @@ class MacroRandomForest:
                          :].add(noise, axis=0)
 
         self.rw_regul_dat = pd.DataFrame(
-            self.data_ori.iloc[: self.oos_pos[0] - 1, [0] + list(self.z_pos)])
+            self.data_ori.iloc[: self.oos_pos[0], [0] + list(self.z_pos)])
 
         row_of_ones = pd.Series([1]*len(data), index=data.index)
 
@@ -608,8 +608,6 @@ class MacroRandomForest:
                 # classic mtry move
                 select_from = np.random.choice(np.arange(0, len(
                     SET.columns)), size=round(len(SET.columns)*self.mtry_frac), p=prob_vec, replace=False)
-
-                # select_from = [8, 15, 9, 7, 14]
 
                 if len(SET.columns) < 5:
                     select_from = np.arange(0, len(SET.columns))
@@ -843,7 +841,7 @@ class MacroRandomForest:
                     everybody = [
                         a for a in everybody if not a in self.whos_who]
                     everybody = everybody[everybody > 0]
-                    everybody = everybody[everybody < nrrd + 1]
+                    everybody = everybody[everybody < nrrd]
 
                     if self.no_rw_trespassing:
                         everybody = np.intersect1d(everybody, self.rando_vec)
@@ -853,7 +851,7 @@ class MacroRandomForest:
                         a for a in everybody2 if not a in self.whos_who]
                     everybody2 = [a for a in everybody2 if not a in everybody]
                     everybody2 = everybody2[everybody2 > 0]
-                    everybody2 = everybody2[everybody2 < nrrd + 1]
+                    everybody2 = everybody2[everybody2 < nrrd]
 
                     if self.no_rw_trespassing:
                         everybody2 = np.intersect1d(everybody2, self.rando_vec)
@@ -874,6 +872,7 @@ class MacroRandomForest:
                         z_neighbors2 = None
 
                     else:
+
                         y_neighbors2 = np.matrix(
                             self.rw_regul ** 2 * self.rw_regul_dat[everybody2, 0])
                         z_neighbors2 = np.matrix(self.rw_regul ** 2*np.hstack(
@@ -1049,40 +1048,46 @@ class MacroRandomForest:
                     if len(everybody) == 0:
                         y_neighbors = None
                         z_neighbors = None
+
                     else:
 
                         y_neighbors = np.matrix(
                             self.rw_regul * self.rw_regul_dat.iloc[everybody, 0])
 
                         z_neighbors = np.matrix(self.rw_regul * np.column_stack([np.repeat(1, repeats=len(everybody)).T, np.matrix(
-                            self.rw_regul_dat.iloc[everybody, 1: len(self.rw_regul_dat.columns)])]))
+                            self.rw_regul_dat.iloc[everybody, 1: len(self.rw_regul_dat.columns)+1])]))
 
                     if len(everybody2) == 0:
                         y_neighbors2 = None
                         z_neighbors2 = None
 
-                    else:
-                        y_neighbors2 = np.matrix(
-                            self.rw_regul**2 * self.rw_regul_dat.iloc[everybody2, 0])
-                        z_neighbors2 = np.matrix(self.rw_regul**2 * np.column_stack([np.repeat(1, repeats=len(
-                            everybody2)).T, np.matrix(self.rw_regul_dat.iloc[everybody2, 1: len(self.rw_regul_dat.columns)])]))
-
-                    yy = np.append(
-                        np.append(np.array(yy), y_neighbors), y_neighbors2)
-
-                    # if len(zz) == len(self.z_pos) + 1:
-
-                    #     print(1)
+                    # elif zz.shape[0] == len(self.z_pos) + 1:
 
                     #     zz = np.vstack(
                     #         [np.transpose(zz), z_neighbors, z_neighbors2])
 
-                    #     print(zz)
+                    else:
 
-                    # else:
-                    zz = np.vstack([zz, z_neighbors, z_neighbors2])
+                        y_neighbors2 = np.matrix(
+                            self.rw_regul**2 * self.rw_regul_dat.iloc[everybody2, 0])
+                        z_neighbors2 = np.matrix(self.rw_regul**2 * np.column_stack([np.repeat(1, repeats=len(
+                            everybody2)).T, np.matrix(self.rw_regul_dat.iloc[everybody2, 1: len(self.rw_regul_dat.columns)+1])]))
+
+                        if zz.shape[0] == len(self.z_pos)+1:
+                            zz = np.vstack([zz.T, z_neighbors, z_neighbors2])
+
+                        else:
+
+                            yy = np.append(
+                                np.append(np.array(yy), y_neighbors), y_neighbors2)
+
+                            zz = np.vstack([zz, z_neighbors, z_neighbors2])
+
+                    # if len(everybody2) == 0:
+                    #     zz = np.vstack([zz, z_neighbors]) # Ask Philippe is this okay?
 
                 if len(self.prior_var) != 0:
+
                     reg_mat = np.diag(
                         np.array(self.prior_var))*self.regul_lambda
                     prior_mean_vec = self.prior_mean
@@ -1165,8 +1170,6 @@ def standard(Y):
     mean_y = Y.mean(axis=0)
 
     sd_y = Y.std(axis=0, ddof=1)
-
-
 
     Y0 = (Y - np.repeat(mean_y,
                         repeats=size[0], axis=0)) / np.repeat(sd_y, repeats=size[0], axis=0)
