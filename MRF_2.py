@@ -7,8 +7,9 @@ import cProfile
 import pstats
 import io
 import math
-from pandarallel import pandarallel
-from multiprocessing import Pool
+import scipy
+import multiprocessing
+from joblib import Parallel, delayed
 
 
 def profile(function):
@@ -77,6 +78,12 @@ class MacroRandomForest:
         self.S_pos = np.arange(1, len(self.data.columns))
         self.trend_pos = max(self.S_pos)
         self.trend_push = trend_push
+        self.cons_w = 0.01
+
+        if len(self.prior_mean) != 0:
+            self.have_prior_mean = True
+        else:
+            self.have_prior_mean = False
 
         ######################################
 
@@ -166,7 +173,7 @@ class MacroRandomForest:
         if len(self.z_pos) < 1:
             raise Exception('You need to specificy at least one X.')
 
-        if len(self.prior_var) != 0 or len(self.prior_mean) != 0:
+        if len(self.prior_var) != 0 or self.have_prior_mean:
             if self.prior_var == None and self.prior_mean != None:
                 raise Exception('Need to additionally specificy prior_var.')
             if self.prior_mean == None and self.prior_var != None:
@@ -264,12 +271,14 @@ class MacroRandomForest:
 
         self.std_stuff = standard(self.data)
 
+        self.random_forests = {}
+
+        result = Parallel(n_jobs=-1)(delayed(self._one_MRF_tree)(b)
+                                     for b in Bs)
+
         for b in Bs:
 
-            self._process_subsampling_selection()
-
-            if self.print_b:
-                print(f"Tree {b+1} out of {self.B}")
+            rt_output = result[b]
 
             if self.random_z:
 
@@ -280,11 +289,10 @@ class MacroRandomForest:
 
                 z_pos_effective = self.z_pos
 
-            rt_output = self._one_MRF_tree()
-
+            rando_vec = rt_output["rando_vec"]
             if self.keep_forest:
                 self.forest[[b]] = rt_output['tree']
-                self.random_vec[[b]] = self.rando_vec
+                self.random_vec[[b]] = rando_vec
 
             # if(bootstrap.opt==3 |bootstrap.opt==4){ #for Bayesian Bootstrap, gotta impose a cutoff on what is OOS and what is not.
             #     rando.vec=which(chosen.ones.plus>quantile(chosen.ones.plus,.5))
@@ -298,7 +306,7 @@ class MacroRandomForest:
             in_out = np.repeat(0, repeats=len(self.data))
 
             for i in range(len(self.data)):
-                if i not in self.rando_vec:
+                if i not in rando_vec:
                     in_out[i] = 1
 
             self.whos_in_mat[:, b] = in_out
@@ -317,17 +325,13 @@ class MacroRandomForest:
             self.avg_beta_nonOVF = self.avg_beta_nonOVF + \
                 rt_output['betas']
 
-            # display(pd.DataFrame(rt_output['betas']))
-            # raise Exception
-
             rt_output['betas'][np.where(in_out == 0), :] = np.repeat(
                 np.nan, repeats=len(z_pos_effective) + 1)
 
             self.betas_draws_nonOVF[b] = rt_output['betas']
 
-            # print(self.betas_draws_nonOVF[b])
             if self.VI_rep > 0:
-                self.pred_kf[:, self.b, -self.rando_vec]
+                self.pred_kf[:, self.b, -rando_vec]
                 self.betas_shu = ((b_avg-1)/b_avg)*self.betas_shu + \
                     (1/b_avg)*rt_output['betas_shu']
                 rt_output['betas_shu'][:, np.where(in_out == 0), :]
@@ -430,7 +434,7 @@ class MacroRandomForest:
                                            replace=False,
                                            size=self.BS4_frac*len(self.data.iloc[-self.oos_pos, :]))  # Is size equivalent to n here? Why both options appear in R?
             chosen_ones_plus = list(chosen_ones)
-            self.rando_vec = list(sorted(chosen_ones_plus))
+            rando_vec = list(sorted(chosen_ones_plus))
 
         # Block sub-sampling. Recommended when looking at TVPs.
         elif self.bootstrap_opt == 2:
@@ -440,19 +444,19 @@ class MacroRandomForest:
             groups = sorted(np.random.choice(
                 list(np.arange(0, int(n_obs/self.block_size))), size=n_obs, replace=True))
 
-            self.rando_vec = np.random.exponential(
+            rando_vec = np.random.exponential(
                 1, size=int(n_obs/self.block_size)) + 0.1
 
-            self.rando_vec = [self.rando_vec[i] for i in groups]
+            rando_vec = [rando_vec[i] for i in groups]
 
-            chosen_ones_plus = self.rando_vec
+            chosen_ones_plus = rando_vec
 
-            self.rando_vec = np.where(chosen_ones_plus > np.quantile(
+            rando_vec = np.where(chosen_ones_plus > np.quantile(
                 chosen_ones_plus, 1 - self.BS4_frac))[0]
 
-            chosen_ones_plus = self.rando_vec
+            chosen_ones_plus = rando_vec
 
-            self.rando_vec = sorted(chosen_ones_plus.tolist())
+            rando_vec = sorted(chosen_ones_plus.tolist())
 
             # self.rando_vec = np.arange(49, 150)
 
@@ -460,7 +464,7 @@ class MacroRandomForest:
             chosen_ones = np.random.exponential(
                 scale=1, size=len(self.data.iloc[-self.oos_pos, :]))
             chosen_ones_plus = chosen_ones/np.mean(chosen_ones)
-            self.rando_vec = chosen_ones_plus
+            rando_vec = chosen_ones_plus
 
         # Block Bayesian Bootstrap. Recommended for forecasting.
         elif self.bootstrap_opt == 4:
@@ -470,15 +474,22 @@ class MacroRandomForest:
             # To hear from Isaac
             ################### INTERNAL NOTE: RYAN ###################
 
-    def _one_MRF_tree(self):
+        return rando_vec
+
+    def _one_MRF_tree(self, b):
         '''
         Function to create a single MRF tree.
         '''
 
+        if self.print_b:
+            print(f"Tree {b+1} out of {self.B}")
+
+        rando_vec = self._process_subsampling_selection()
+
         data = self.std_stuff["Y"]
 
         # Adjust prior.mean according to standarization
-        if len(self.prior_mean) != 0:
+        if self.have_prior_mean:
             self.prior_mean[-1] = (1/self.std_stuff["std"][:, self.y_pos]) * \
                 (self.prior_mean[-1]*self.std_stuff["std"][:, self.z_pos])
 
@@ -486,30 +497,30 @@ class MacroRandomForest:
                                   self.std_stuff["mean"][:, self.z_pos]@self.prior_mean[-1])/self.std_stuff["std"][:, self.y_pos]
 
         # Just a simple/convenient way to detect you're using BB or BBB rather than sub-sampling
-        if min(self.rando_vec) < 0:
-            self.weights = self.rando_vec
-            self.rando_vec = np.arange(0, min(self.oos_pos))
-            self.bayes = True
+        if min(rando_vec) < 0:
+            weights = rando_vec
+            rando_vec = np.arange(0, min(self.oos_pos))
+            bayes = True
 
         else:
-            self.bayes = False
+            bayes = False
 
         if self.minsize < (2 * self.min_leaf_fracz * (len(self.z_pos)+2)):
             self.minsize = 2*self.min_leaf_fracz*(len(self.z_pos)+1)+2
 
         noise = 0.00000015 * \
-            np.random.normal(size=len(self.rando_vec))
+            np.random.normal(size=len(rando_vec))
 
         # coerce to a dataframe
         self.data_ori = pd.DataFrame(data.copy())
 
         data = pd.DataFrame(data)
 
-        data = data.iloc[self.rando_vec,
+        data = data.iloc[rando_vec,
                          :].add(noise, axis=0)
 
-        self.rw_regul_dat = pd.DataFrame(
-            self.data_ori.iloc[: self.oos_pos[0], [0] + list(self.z_pos)])
+        self.rw_regul_dat = self.data_ori.iloc[: self.oos_pos[0], [
+            0] + list(self.z_pos)]
 
         row_of_ones = pd.Series([1]*len(data), index=data.index)
 
@@ -520,10 +531,10 @@ class MacroRandomForest:
 
         z = data.iloc[:, self.z_pos]
 
-        if self.bayes:
+        if bayes:
 
-            z = pd.DataFrame(self.weights*z)
-            y = pd.DataFrame(self.weights*y)
+            z = pd.DataFrame(weights*z)
+            y = pd.DataFrame(weights*y)
 
         do_splits = True
 
@@ -535,6 +546,12 @@ class MacroRandomForest:
 
         tree_info = pd.DataFrame(tree_info, index=[0])
 
+        column_binded_data = data.copy()
+
+        column_binded_data.insert(
+            0, "rando_vec", rando_vec)
+        
+
         while do_splits:
 
             to_calculate = tree_info[tree_info['TERMINAL']
@@ -545,49 +562,40 @@ class MacroRandomForest:
             for j in to_calculate:
 
                 # Handle root node
-                if tree_info.loc[j, "FILTER"] != None:
+
+                filterr = tree_info.loc[j, "FILTER"]
+
+                if filterr != None:
                     # subset data according to the filter
 
-                    parsed_filter = tree_info.loc[j,
-                                                  "FILTER"].replace("[", "data[")
+                    parsed_filter = filterr.replace("[", "data[")
 
                     this_data = data[eval(parsed_filter)]
 
-                    column_binded_data = data.copy()
-
-                    column_binded_data.insert(
-                        0, "rando_vec", self.rando_vec)
-
-                    find_out_who = column_binded_data[eval(
-                        parsed_filter.replace("data", "column_binded_data"))]
+                    find_out_who = column_binded_data.loc[this_data.index]
 
                     whos_who = find_out_who.iloc[:, 1]
 
                     # Get the design matrix
-
                     X = this_data.iloc[:, self.x_pos]
-
                     X.insert(0, "Intercept", [1]*len(X))
 
                     y = this_data.iloc[:, self.y_pos]
                     z = this_data.iloc[:, self.z_pos]
 
-                    if self.bayes:
-                        z = pd.DataFrame(
-                            self.weights[whos_who]*z)
-                        y = pd.DataFrame(
-                            self.weights[whos_who]*np.matrix(y))
+                    if bayes:
+                        z = weights[whos_who]*z
+                        y = weights[whos_who]*np.matrix(y)
 
                 else:
 
                     this_data = data
-                    whos_who = self.rando_vec
+                    whos_who = rando_vec
 
-                    if self.bayes:
+                    if bayes:
 
-                        this_data = self.weights * data
+                        this_data = weights * data
 
-                ####### INTERNAL NOTE: ASK PHILLIPE ABOUT THIS b0 thing ######
                 self.old_b0 = tree_info.loc[j, "b0.1"]
 
                 ############## Select potential candidates for this split ###############
@@ -596,8 +604,10 @@ class MacroRandomForest:
                 # if(y.pos<trend.pos){trend.pos=trend.pos-1} #so the user can specify trend pos in terms of position in the data matrix, not S_t
                 # modulation option
 
+                n_cols_split = len(SET.columns)
+
                 if self.prob_vec == None:
-                    prob_vec = np.repeat(1, repeats=len(SET.columns))
+                    prob_vec = np.repeat(1, repeats=n_cols_split)
 
                 if self.trend_push > 1:
                     prob_vec[self.trend_pos] = self.trend_push
@@ -607,63 +617,62 @@ class MacroRandomForest:
 
                 # classic mtry move
                 select_from = np.random.choice(np.arange(0, len(
-                    SET.columns)), size=round(len(SET.columns)*self.mtry_frac), p=prob_vec, replace=False)
+                    SET.columns)), size=round(n_cols_split*self.mtry_frac), p=prob_vec, replace=False)
 
                 if len(SET.columns) < 5:
-                    select_from = np.arange(0, len(SET.columns))
+                    select_from = np.arange(0, n_cols_split)
 
                 splitting = SET.iloc[:, select_from].apply(
-                    lambda x: self._splitter_mrf(x, y, z, whos_who))
+                    lambda x: self._splitter_mrf(x, y, z, whos_who, rando_vec))
 
-                stop_flag = all(splitting.iloc[0, :] == np.inf)
+                sse = splitting.iloc[0, :]
 
-                tmp_splitter = splitting.iloc[0, :].idxmin()
+                stop_flag = all(np.array(sse) == np.inf)
+
+                tmp_splitter = sse.idxmin()
 
                 mn = max(tree_info['NODE'])
 
-                tmp_filter = [f"[{tmp_splitter}] >= {round(splitting.loc[1, tmp_splitter],3)}",
-                              f"[{tmp_splitter}] < {round(splitting.loc[1, tmp_splitter],3)}"]
+                criteria = splitting.loc[1, tmp_splitter]
 
-                ######## INTERNAL NOTE: PUT THIS BACK IN ########
+                tmp_filter = [f"[{tmp_splitter}] >= {criteria}",
+                              f"[{tmp_splitter}] < {criteria}"]
+
+                ######## INTERNAL NOTE: CHECK THIS WITH R ########
 
                 # split_here  <- !sapply(tmp_filter,
                 #     FUN = function(x,y) any(grepl(x, x = y)),
                 #     y = tree_info$FILTER)
 
-                ######## INTERNAL NOTE: PUT THIS BACK IN ########
+                ######## INTERNAL NOTE: CHECK THIS WITH R ########
 
-                if tree_info.loc[j, "FILTER"] != None:
-                    tmp_filter = ["(" + tree_info.loc[j, 'FILTER'] + ")" + " & " + "(" + filterr + ")"
-                                  for filterr in tmp_filter]
+                if filterr != None:
+                    tmp_filter = ["(" + filterr + ")" + " & " + "(" + f + ")"
+                                  for f in tmp_filter]
 
-                tmp_df = pd.DataFrame(tmp_filter).transpose()
+                # split_filters = [filterr.replace(
+                #     "[", "this_data[") for filterr in tmp_filter]
 
-                best_split = splitting[tmp_splitter]
+                # nobs = [len(this_data[eval(split_filters[i])])
+                #         for i in range(len(split_filters))]
 
-                # nobs = [best_split.iloc[6], best_split.iloc[7]]
+                nobs = np.array([splitting.loc[7, tmp_splitter],
+                                splitting.loc[6, tmp_splitter]])
 
-                split_filters = [filterr.replace(
-                    "[", "this_data[") for filterr in tmp_filter]
-
-                nobs = [len(this_data[eval(split_filters[i])])
-                        for i in range(len(split_filters))]
-
-                tmp_nobs = pd.concat([tmp_df, pd.DataFrame(nobs).transpose()])
-
-                if any(tmp_nobs.iloc[1] <= self.minsize):
+                if any(nobs <= self.minsize):
                     split_here = np.repeat(False, repeats=2, axis=0)
 
                 split_here = np.repeat(False, repeats=2, axis=0)
-                split_here[tmp_nobs.iloc[1] >= self.minsize] = True
+                split_here[nobs >= self.minsize] = True
 
                 terminal = np.repeat("SPLIT", repeats=2, axis=0)
-                terminal[tmp_nobs.iloc[1] < self.minsize] = "LEAF"
-                terminal[tmp_nobs.iloc[1] == 0] = "TRASH"
+                terminal[nobs < self.minsize] = "LEAF"
+                terminal[nobs == 0] = "TRASH"
 
                 if not stop_flag:
 
-                    children = {
-                        "NODE": [mn+1, mn+2], "NOBS": tmp_nobs.iloc[1], "FILTER": tmp_filter, "TERMINAL": terminal}
+                    children = {"NODE": [
+                        mn+1, mn+2], "NOBS": nobs, "FILTER": tmp_filter, "TERMINAL": terminal}
 
                     for i in range(1, len(self.z_pos) + 2):
                         children[f'b0.{i}'] = [
@@ -679,22 +688,10 @@ class MacroRandomForest:
                 tree_info = pd.concat(
                     [tree_info, children]).reset_index(drop=True)
 
-                do_splits = not (all(tree_info['TERMINAL'] != "SPLIT"))
+                do_splits = not (
+                    all(np.array(tree_info['TERMINAL']) != "SPLIT"))
 
                 all_stop_flags.append(stop_flag)
-
-                # Error handling! check if the splitting rule has already been invoked
-                # split_here  <- !sapply(tmp_filter,
-                #              FUN = function(x,y) any(grepl(x, x = y)),
-                #              y = tree_info$FILTER)
-
-                # # append the splitting rules
-                # if (!is.na(tree_info[j, "FILTER"])) {
-                #     tmp_filter  <- paste(tree_info[j, "FILTER"],
-                #                         tmp_filter, sep = " & ")
-                # }
-
-                # tmp_nobs =
 
             if all(all_stop_flags):
                 do_splits = False
@@ -706,7 +703,7 @@ class MacroRandomForest:
 
         leafs = tree_info[tree_info["TERMINAL"] == "LEAF"]
 
-        pga = self._pred_given_tree(leafs)
+        pga = self._pred_given_tree(leafs, rando_vec)
 
         beta_bank = pga['beta_bank']
 
@@ -751,15 +748,14 @@ class MacroRandomForest:
                 "data": self.data_ori,
                 "betas": betas,
                 'betas_shu': beta_bank_shu,
-                "fitted_shu": fitted_shu}
+                "fitted_shu": fitted_shu,
+                "rando_vec": rando_vec}
 
-    def _splitter_mrf(self, x, y, z, whos_who):
-
-        cons_w = 0.01
-
-        uni_x = np.unique(x)
+    def _splitter_mrf(self, x, y, z, whos_who, rando_vec):
 
         x = np.array(x)
+
+        uni_x = np.unique(x)
 
         splits = sorted(uni_x)
 
@@ -772,10 +768,10 @@ class MacroRandomForest:
         y = np.matrix(y)
 
         sse = np.repeat(np.inf, repeats=len(uni_x), axis=0)
-        id1s = np.repeat(np.inf, repeats=len(uni_x), axis=0)
-        id2s = np.repeat(np.inf, repeats=len(uni_x), axis=0)
-
         the_seq = np.arange(0, len(splits))
+
+        nobs1 = {}
+        nobs2 = {}
 
         if self.rw_regul <= 0:
             self.fast_rw = True
@@ -800,13 +796,13 @@ class MacroRandomForest:
                 the_seq = np.arange(0, len(splits))
 
         reg_mat = np.identity(z.shape[1])*self.regul_lambda
-        reg_mat[0, 0] = cons_w*reg_mat[0, 0]
+        reg_mat[0, 0] = self.cons_w*reg_mat[0, 0]
 
         if len(self.prior_var) > 0:
 
             reg_mat = np.diag(np.array(self.prior_var))*self.regul_lambda
 
-        if len(self.prior_mean) == 0:
+        if not self.have_prior_mean:
 
             z_T = z.T
             b0 = np.linalg.solve(z_T @ z + reg_mat, z_T@y.T)
@@ -818,8 +814,9 @@ class MacroRandomForest:
             b0 = np.linalg.solve(
                 z_T @ z + reg_mat, np.matmul(z_T, y - z @ self.prior_mean)) + self.prior_mean
 
-        nrrd = self.rw_regul_dat.shape[0]
-        ncrd = self.rw_regul_dat.shape[1]
+        dimension = self.rw_regul_dat.shape
+        nrrd = dimension[0]
+        ncrd = dimension[1]
 
         for i in the_seq:
 
@@ -828,7 +825,13 @@ class MacroRandomForest:
             id1 = np.where(x < sp)[0]
             id2 = np.where(x >= sp)[0]
 
-            if len(id1) >= min_frac_times_no_cols and len(id2) >= min_frac_times_no_cols:
+            num_first_split = len(id1)
+            num_second_split = len(id2)
+
+            nobs1[i] = num_first_split
+            nobs2[i] = num_second_split
+
+            if num_first_split >= min_frac_times_no_cols and num_second_split >= min_frac_times_no_cols:
 
                 yy = np.array([[y_as_list[i] for i in id1]])
 
@@ -844,7 +847,7 @@ class MacroRandomForest:
                     everybody = everybody[everybody < nrrd + 1]
 
                     if self.no_rw_trespassing:
-                        everybody = np.intersect1d(everybody, self.rando_vec)
+                        everybody = np.intersect1d(everybody, rando_vec)
                     everybody2 = (
                         whos_who[id1]+2).union(whos_who[id1]-2)
                     everybody2 = [
@@ -854,7 +857,7 @@ class MacroRandomForest:
                     everybody2 = everybody2[everybody2 < nrrd + 1]
 
                     if self.no_rw_trespassing:
-                        everybody2 = np.intersect1d(everybody2, self.rando_vec)
+                        everybody2 = np.intersect1d(everybody2, rando_vec)
 
                     if len(everybody) == 0:
                         y_neighbors = None
@@ -882,14 +885,22 @@ class MacroRandomForest:
                     zz = np.vstack(np.matrix(zz), z_neighbors, z_neighbors2)
 
                 # bvars or not
-                if len(self.prior_mean) == 0:
+                if not self.have_prior_mean:
 
                     # if len(yy) != zz.shape[0]:
                     #     print(f'{len(yy)} and {zz.shape[0]}')
 
                     zz_T = zz.T
-                    p1 = zz_privy@((1-self.HRW)*np.linalg.solve(zz_T @ zz +
-                                                                reg_mat, zz_T @ yy.T) + self.HRW*b0)
+
+                    if self.HRW != 0:
+
+                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(zz_T @ zz +
+                                                                    reg_mat, zz_T @ yy.T) + self.HRW*b0)
+
+                    else:
+
+                        p1 = zz_privy@(np.linalg.solve(zz_T @ zz +
+                                                       reg_mat, zz_T @ yy.T) + b0)
 
                 else:
                     pass
@@ -915,7 +926,7 @@ class MacroRandomForest:
                     everybody = everybody[everybody < nrrd + 1]
 
                     if self.no_rw_trespassing:
-                        everybody = np.intersect1d(everybody, self.rando_vec)
+                        everybody = np.intersect1d(everybody, rando_vec)
 
                     everybody2 = (
                         whos_who[id2]+2).union(whos_who[id2]-2)
@@ -927,7 +938,7 @@ class MacroRandomForest:
 
                     if self.no_rw_trespassing:
                         everybody2 = np.intersect1d(
-                            everybody2, self.rando_vec)
+                            everybody2, rando_vec)
 
                     if len(everybody) == 0:
                         y_neighbors = None
@@ -944,11 +955,18 @@ class MacroRandomForest:
                     zz = np.vstack(np.matrix(zz), z_neighbors,
                                    z_neighbours2, None)
 
-                if len(self.prior_mean) == 0:
+                if not self.have_prior_mean:
 
                     zz_T = zz.T
-                    p2 = zz_privy@((1-self.HRW)*np.linalg.solve(zz_T @ zz +
-                                                                reg_mat, zz_T @ yy.T) + self.HRW*b0)
+
+                    if self.HRW != 0:
+
+                        p2 = zz_privy@((1-self.HRW)*np.linalg.solve(zz_T @ zz +
+                                                                    reg_mat, zz_T @ yy.T) + self.HRW*b0)
+
+                    else:
+                        p2 = zz_privy@(np.linalg.solve(zz_T @ zz +
+                                                       reg_mat, zz_T @ yy.T) + b0)
 
                 else:
 
@@ -964,28 +982,29 @@ class MacroRandomForest:
                     sum(np.subtract(
                         y_as_list.take(id2), np.array(p2.flat)) ** 2)
 
-                id1s[i] = len(id1)
-                id2s[i] = len(id2)
-
         # implement a mild preference for 'center' splits, allows trees to run deeper
         sse = DV_fun(sse, DV_pref=0.15)
-
         split_no_chosen = sse.argmin()
-        split_at = splits[split_no_chosen]
 
-        return [min(sse)] + [split_at] + list(b0.flat) + [id2s[split_no_chosen]] + [id1s[split_no_chosen]]
+        return [min(sse)] + [splits[split_no_chosen]] + list(b0.flat) + [nobs1[split_no_chosen]] + [nobs2[split_no_chosen]]
 
-    def _pred_given_tree(self, leafs):
+    def _pred_given_tree(self, leafs, rando_vec):
 
         fitted = np.repeat(np.nan, repeats=len(self.ori_y))
 
         beta_bank = np.full(fill_value=np.nan, shape=(
             len(self.ori_y), len(self.ori_z.columns)))
 
+        ori_z = np.matrix(self.ori_z)
+
+        regul_mat = np.matrix(self.rw_regul_dat)
+
+        leafs_mat = np.matrix(leafs)
+
         for i in range(0, len(leafs)):
 
             ind_all = list(self.data_ori[eval(
-                leafs['FILTER'].iloc[i].replace("[", "self.data_ori["))].index)
+                leafs_mat[i, 2].replace("[", "self.data_ori["))].index)
 
             ind = [j for j in ind_all if j <
                    self.oos_pos[0] if not np.isnan(j)]
@@ -995,17 +1014,16 @@ class MacroRandomForest:
                 yy = self.ori_y.iloc[ind]
 
                 if len(ind) == 1:
-                    zz = np.transpose(np.matrix(self.ori_z.iloc[ind, :]))
-                    zz_all = np.matrix(self.ori_z.iloc[ind_all, :])
+                    zz = ori_z[ind, :].T
+                    zz_all = ori_z[ind_all, :]
 
                     if len(ind_all) == 1:
-                        zz_all = np.transpose(
-                            np.matrix(self.ori_z.iloc[ind_all, :]))
+                        zz_all = ori_z[ind_all, :].T
 
                 else:
 
-                    zz = np.matrix(self.ori_z.iloc[ind, :])
-                    zz_all = self.ori_z.iloc[ind_all, :]
+                    zz = ori_z[ind, :]
+                    zz_all = ori_z[ind_all, :]
 
                 # Simple ridge prior
 
@@ -1015,6 +1033,9 @@ class MacroRandomForest:
 
                 # Adds RW prior in the mix
 
+                n_rows_reg_data = regul_mat.shape[0]
+                n_cols_reg_data = regul_mat.shape[1]
+
                 if self.rw_regul > 0:
 
                     everybody = np.unique(
@@ -1023,11 +1044,11 @@ class MacroRandomForest:
                     everybody = [j for j in everybody if j not in ind_all]
                     everybody = [j for j in everybody if j >= 0]
                     everybody = [j for j in everybody if j <
-                                 len(self.rw_regul_dat)]
+                                 n_rows_reg_data]
 
                     if self.no_rw_trespassing:
                         everybody = [
-                            j for j in everybody if j in self.rando_vec]
+                            j for j in everybody if j in rando_vec]
 
                     everybody2 = np.unique(
                         np.append(np.array(ind)+2, np.array(ind)-2))
@@ -1037,13 +1058,13 @@ class MacroRandomForest:
                     everybody2 = [j for j in everybody2 if j >= 0]
 
                     everybody2 = [j for j in everybody2 if j <
-                                  len(self.rw_regul_dat)]
+                                  n_rows_reg_data]
 
                     everybody2 = [j for j in everybody2 if j not in everybody]
 
                     if self.no_rw_trespassing:
                         everybody2 = [
-                            j for j in everybody2 if j in self.rando_vec]
+                            j for j in everybody2 if j in rando_vec]
 
                     neighbours_add = True
 
@@ -1053,10 +1074,10 @@ class MacroRandomForest:
                     else:
 
                         y_neighbors = np.matrix(
-                            self.rw_regul * self.rw_regul_dat.iloc[everybody, 0])
+                            self.rw_regul * regul_mat[everybody, 0])
 
                         z_neighbors = np.matrix(self.rw_regul * np.column_stack([np.repeat(1, repeats=len(everybody)).T, np.matrix(
-                            self.rw_regul_dat.iloc[everybody, 1: len(self.rw_regul_dat.columns)])]))
+                            regul_mat[everybody, 1: n_cols_reg_data])]))
 
                     neighbours_2_add = True
 
@@ -1065,9 +1086,9 @@ class MacroRandomForest:
 
                     else:
                         y_neighbors2 = np.matrix(
-                            self.rw_regul**2 * self.rw_regul_dat.iloc[everybody2, 0])
+                            self.rw_regul**2 * regul_mat[everybody2, 0])
                         z_neighbors2 = np.matrix(self.rw_regul**2 * np.column_stack([np.repeat(1, repeats=len(
-                            everybody2)).T, np.matrix(self.rw_regul_dat.iloc[everybody2, 1: len(self.rw_regul_dat.columns)])]))
+                            everybody2)).T, regul_mat[everybody2, 1: n_cols_reg_data]]))
 
                     if len(zz) == len(self.z_pos) + 1:
                         yy = np.append(
@@ -1099,7 +1120,7 @@ class MacroRandomForest:
 
                     ###### INTERNAL NOTE: CHECK INDEXING HERE ########
                     b0 = np.transpose(
-                        np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
+                        leafs_mat[i, 4: 4+len(self.z_pos)+1])
                     ###### INTERNAL NOTE: CHECK INDEXING HERE ########
 
                 else:
@@ -1109,8 +1130,7 @@ class MacroRandomForest:
                     beta_hat = np.linalg.solve(
                         np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
 
-                    b0 = np.transpose(
-                        np.matrix(leafs.iloc[i, 4: 4+len(self.z_pos)+1]))
+                    b0 = np.transpose(leafs_mat[i, 4: 4+len(self.z_pos)+1])
 
                 if len(ind_all) == 1:
                     if np.matrix(np.transpose(zz_all)).shape[0] != 1:
@@ -1137,6 +1157,16 @@ class MacroRandomForest:
                     (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
 
         return {"fitted": fitted, "beta_bank": beta_bank}
+
+    def parallelise(data, func):
+        cores = cpu_count()  # Number of CPU cores on your system
+        partitions = cores  # Define as many partitions as you want
+        data_split = np.array_split(data, partitions)
+        pool = Pool(cores)
+        data = pd.concat(pool.map(func, data_split))
+        pool.close()
+        pool.join()
+        return data
 
     def _pred_given_mrf(self):
 
