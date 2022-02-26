@@ -83,6 +83,8 @@ class MacroRandomForest:
         else:
             self.have_prior_mean = False
 
+        ######################################
+
         ######## RUN LOGISTICS ###########
         self._name_translations()
         self._array_setup()
@@ -113,7 +115,12 @@ class MacroRandomForest:
         # used to be an option, but turns out I can't think of a good reason to choose 'False'. So I impose it.
         self.no_rw_trespassing = True
         self.BS4_frac = self.subsampling_rate  # translation to older names in the code
+
+        ################### INTERNAL NOTE: RYAN ###################
+        # VERIFY np.where has exact same functionality as which() from R.
+        # translate self.trend_pos to be interms of position in S
         self.trend_pos = np.where(self.S_pos == self.trend_pos)
+        ################### INTERNAL NOTE: RYAN ###################
 
         if self.prior_var != []:
             # those are infact implemented in terms of heterogeneous lambdas
@@ -133,11 +140,14 @@ class MacroRandomForest:
             raise Exception(
                 'S.pos specifies variables beyond the limit of your data matrix.')
 
+        ################### INTERNAL NOTE: RYAN ###################
+        # Another use of np.where to replace which(). Need to check it.
         if self.y_pos in list(self.x_pos):
             self.x_pos = self.x_pos[self.x_pos != self.y_pos]
             print('Beware: foolproof 1 activated. self.S_pos and self.y_pos overlap.')
             self.trend_pos = np.where(
                 self.x_pos == self.trend_pos)  # foolproof 1
+        ################### INTERNAL NOTE: RYAN ###################
 
         if self.y_pos in list(self.z_pos):
             self.z_pos = self.z_pos[self.z_pos != self.y_pos]
@@ -539,6 +549,7 @@ class MacroRandomForest:
         tree_info = pd.DataFrame(tree_info, index=[0])
 
         column_binded_data = data.copy()
+
         column_binded_data.insert(
             0, "rando_vec", rando_vec)
 
@@ -591,8 +602,8 @@ class MacroRandomForest:
                 ############## Select potential candidates for this split ###############
                 SET = X.iloc[:, 1:]  # all X's but the intercept
 
-                # if(self.y_pos<self.trend_pos):
-                #     trend_pos=trend_pos-1 #so the user can specify trend pos in terms of position in the data matrix, not S_t
+                # if(y.pos<trend.pos){trend.pos=trend.pos-1} #so the user can specify trend pos in terms of position in the data matrix, not S_t
+                # modulation option
 
                 n_cols_split = len(SET.columns)
 
@@ -628,9 +639,23 @@ class MacroRandomForest:
                 tmp_filter = [f"[{tmp_splitter}] >= {criteria}",
                               f"[{tmp_splitter}] < {criteria}"]
 
+                ######## INTERNAL NOTE: CHECK THIS WITH R ########
+
+                # split_here  <- !sapply(tmp_filter,
+                #     FUN = function(x,y) any(grepl(x, x = y)),
+                #     y = tree_info$FILTER)
+
+                ######## INTERNAL NOTE: CHECK THIS WITH R ########
+
                 if filterr != None:
                     tmp_filter = ["(" + filterr + ")" + " & " + "(" + f + ")"
                                   for f in tmp_filter]
+
+                # split_filters = [filterr.replace(
+                #     "[", "this_data[") for filterr in tmp_filter]
+
+                # nobs = [len(this_data[eval(split_filters[i])])
+                #         for i in range(len(split_filters))]
 
                 nobs = np.array([splitting.loc[7, tmp_splitter],
                                 splitting.loc[6, tmp_splitter]])
@@ -808,31 +833,54 @@ class MacroRandomForest:
             if num_first_split >= min_frac_times_no_cols and num_second_split >= min_frac_times_no_cols:
 
                 yy = np.array([[y_as_list[i] for i in id1]])
-                zz = z[id1, :]
 
+                zz = z[id1, :]
                 zz_privy = zz
 
                 if not self.fast_rw:
 
-                    everybody = self._find_n_neighbours(
+                    everybody = self._random_walk_regularisation(
                         whos_who, id1, 1, nrrd, rando_vec)
 
-                    everybody2 = self._find_n_neighbours(
+                    everybody2 = self._random_walk_regularisation(
                         whos_who, id1, 2, nrrd, rando_vec)
 
                     everybody2 = np.array(
                         [a for a in everybody2 if not a in everybody])
 
-                    yy, zz = self._random_walk_regularisation(yy,
-                                                              zz,
-                                                              everybody,
-                                                              everybody2,
-                                                              rw_regul_dat,
-                                                              ncrd)
+                    if len(everybody) == 0:
+                        add_neighbours = False
 
-                zz_T = zz.T
+                    else:
+
+                        y_neighbors = np.matrix(
+                            self.rw_regul*rw_regul_dat[everybody, 0])
+                        z_neighbors = np.matrix(self.rw_regul * np.hstack(
+                            np.repeat(1, repeats=len(everybody2)),
+                            np.matrix(rw_regul_dat[everybody2, 1: ncrd+1])))
+
+                    if len(everybody2) == 0 and add_neighbours:
+                        yy = np.append(yy, y_neighbors)
+                        zz = np.vstack([np.matrix(zz), z_neighbors])
+
+                    elif len(everybody2) == 0 and not add_neighbours:
+                        pass # This means we don't add 2-neighbours or 1-neighbours
+
+                    else:
+                        y_neighbors2 = np.matrix(
+                            self.rw_regul ** 2 * rw_regul_dat[everybody2, 0])
+
+                        z_neighbors2 = np.matrix(self.rw_regul ** 2*np.hstack(
+                            np.repeat(1, repeats=len(everybody2)),
+                            np.matrix(rw_regul_dat[everybody2, 1: ncrd+1])))
+
+                        yy = np.append(yy, y_neighbors)
+                        yy = np.append(yy, y_neighbors2)
+
                 # bvars or not
                 if not self.have_prior_mean:
+
+                    zz_T = zz.T
 
                     if self.HRW != 0:
 
@@ -845,40 +893,49 @@ class MacroRandomForest:
                                                        reg_mat, zz_T @ yy.T) + b0)
 
                 else:
+                    pass
 
-                    if self.HRW != 0:
-                        p1 = zz_privy@((1-self.HRW)*np.linalg.solve(zz @ zz_T + reg_mat, np.matmul(
-                            zz, yy - zz @ self.prior_mean)) + self.prior_mean + self.HRW*b0)
+                    ###### INTERNAL NOTE: RYAN ######
+                    # p1 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz, zz.T) + reg_mat, np.matmul(
+                    # zz, yy - zz @ self.prior_mean)) + self.prior_mean + self.HRW*b0)
+                    # WIP
 
-                    else:
-                        p1 = zz_privy@(np.linalg.solve(zz @ zz_T + reg_mat, np.matmul(
-                            zz, yy - zz @ self.prior_mean)) + self.prior_mean + b0)
+                   ###### INTERNAL NOTE: RYAN ######
 
                 yy = np.array([[y_as_list[i] for i in id2]])
+
                 zz = z[id2, :]
                 zz_privy = zz
 
                 if not self.fast_rw:
 
-                    everybody = self._find_n_neighbours(
-                        whos_who, id2, 1, nrrd, rando_vec)
-
-                    everybody2 = self._find_n_neighbours(
+                    everybody = self._random_walk_regularisation(
                         whos_who, id2, 2, nrrd, rando_vec)
 
-                    everybody2 = np.array(
-                        [a for a in everybody2 if not a in everybody])
+                    everybody2 = np.array([a for a in everybody2 if not a in everybody])
 
-                    yy, zz = self._random_walk_regularisation(yy,
-                                                              zz,
-                                                              everybody,
-                                                              everybody2,
-                                                              rw_regul_dat,
-                                                              ncrd)
+                    if self.no_rw_trespassing:
+                        everybody2 = np.intersect1d(
+                            everybody2, rando_vec)
 
-                zz_T = zz.T
+                    if len(everybody) == 0:
+                        y_neighbors = None
+                        z_neighbors = None
+
+                    else:
+                        y_neighbors2 = np.matrix(
+                            (self.rw_regul ** 2) * rw_regul_dat[everybody2, 1])
+                        z_neighbors2 = np.matrix(self.rw_regul ** 2*np.hstack(
+                            np.repeat(1, repeats=len(everybody2)),
+                            np.matrix(rw_regul_dat[everybody2, 1: ncrd])))
+
+                    yy = yy.append(y_neighbors).append(y_neighbors2)
+                    zz = np.vstack(np.matrix(zz), z_neighbors,
+                                   z_neighbors2, None)
 
                 if not self.have_prior_mean:
+
+                    zz_T = zz.T
 
                     if self.HRW != 0:
 
@@ -891,8 +948,13 @@ class MacroRandomForest:
 
                 else:
 
-                    p2 = zz_privy@((1-self.HRW)*np.linalg.solve(zz_T @ zz + reg_mat, np.matmul(
-                        zz, yy - zz @ self.prior_mean)) + self.prior_mean+self.HRW*b0)
+                    pass
+                    ###### INTERNAL NOTE: RYAN ######
+                    # p2 = zz_privy@((1-self.HRW)*np.linalg.solve(np.matmul(zz.T, zz) + reg_mat, np.matmul(
+                    #    zz, yy - zz @ self.prior_mean)) + self.prior_mean+self.HRW*b0)
+                    # WIP
+
+                ###### INTERNAL NOTE: RYAN ######
 
                 sse[i] = sum(np.subtract(y_as_list.take(id1), np.array(p1.flat)) ** 2) + \
                     sum(np.subtract(
@@ -903,6 +965,20 @@ class MacroRandomForest:
         split_no_chosen = sse.argmin()
 
         return [min(sse)] + [splits[split_no_chosen]] + list(b0.flat) + [nobs1[split_no_chosen]] + [nobs2[split_no_chosen]]
+
+    def _random_walk_regularisation(self, whos_who, i_d, n_neighbours, nrrd, rando_vec):
+
+        everybody_n = np.unique(np.concatenate((whos_who.take(
+            i_d)+n_neighbours, whos_who.take(i_d)-n_neighbours)))
+        everybody_n = np.array([
+            a for a in everybody_n if not a in whos_who])
+        everybody_n = everybody_n[everybody_n >= 0]
+        everybody_n = everybody_n[everybody_n < nrrd]
+
+        if self.no_rw_trespassing:
+            everybody_n = np.intersect1d(everybody_n, rando_vec)
+
+        return everybody_n
 
     def _pred_given_tree(self, leafs, rando_vec, rw_regul_dat):
 
@@ -922,8 +998,8 @@ class MacroRandomForest:
             ind_all = list(self.data_ori[eval(
                 leafs_mat[i, 2].replace("[", "self.data_ori["))].index)
 
-            ind = np.array([j for j in ind_all if j <
-                            self.oos_pos[0] if not np.isnan(j)])
+            ind = [j for j in ind_all if j <
+                   self.oos_pos[0] if not np.isnan(j)]
 
             if len(ind_all) > 0:
 
@@ -946,24 +1022,80 @@ class MacroRandomForest:
                 reg_mat[0, 0] = 0.01 * reg_mat[0, 0]
 
                 # Adds RW prior in the mix
-                nrrd = regul_mat.shape[0]
-                ncrd = regul_mat.shape[1]
+                n_rows_reg_data = regul_mat.shape[0]
+                n_cols_reg_data = regul_mat.shape[1]
 
                 if self.rw_regul > 0:
 
-                    everybody = self._find_n_neighbours(
-                        ind, None, 1, nrrd, rando_vec, ind_all, "prediction")
+                    everybody = np.unique(
+                        np.append(np.array(ind)+1, np.array(ind)-1))
 
-                    everybody2 = self._find_n_neighbours(
-                        ind, None, 2, nrrd, rando_vec, ind_all, "prediction")
+                    everybody = [j for j in everybody if j not in ind_all]
+                    everybody = [j for j in everybody if j >= 0]
+                    everybody = [j for j in everybody if j <
+                                 n_rows_reg_data]
 
-                    everybody2 = np.array(
-                        [j for j in everybody2 if j not in everybody])
+                    if self.no_rw_trespassing:
+                        everybody = [
+                            j for j in everybody if j in rando_vec]
+
+                    everybody2 = np.unique(
+                        np.append(np.array(ind)+2, np.array(ind)-2))
+
+                    everybody2 = [j for j in everybody2 if j not in ind_all]
+
+                    everybody2 = [j for j in everybody2 if j >= 0]
+
+                    everybody2 = [j for j in everybody2 if j <
+                                  n_rows_reg_data]
+
+                    everybody2 = [j for j in everybody2 if j not in everybody]
+
+                    if self.no_rw_trespassing:
+                        everybody2 = [
+                            j for j in everybody2 if j in rando_vec]
 
                     neighbors_add = True
 
-                    yy_new, zz_new = self._random_walk_regularisation(
-                        yy, zz, everybody, everybody2, regul_mat, ncrd)
+                    if len(everybody) == 0:
+                        neighbors_add = False
+
+                    else:
+
+                        y_neighbors = np.matrix(
+                            self.rw_regul * regul_mat[everybody, 0])
+
+                        z_neighbors = np.matrix(self.rw_regul * np.column_stack([np.repeat(1, repeats=len(everybody)).T, np.matrix(
+                            regul_mat[everybody, 1: n_cols_reg_data])]))
+
+                    neighbors_2_add = True
+
+                    if len(everybody2) == 0:
+                        neighbors_2_add = False
+
+                    else:
+                        y_neighbors2 = np.matrix(
+                            self.rw_regul**2 * regul_mat[everybody2, 0])
+                        z_neighbors2 = np.matrix(self.rw_regul**2 * np.column_stack([np.repeat(1, repeats=len(
+                            everybody2)).T, regul_mat[everybody2, 1: n_cols_reg_data]]))
+
+                    if len(zz) == len(self.z_pos) + 1:
+                        yy = np.append(
+                            np.append(np.array(yy), y_neighbors), y_neighbors2)
+                        zz = np.vstack(
+                            [np.transpose(zz), z_neighbors, z_neighbors2])
+
+                    elif neighbors_2_add == False and neighbors_add == True:
+                        zz = np.vstack(
+                            [zz, z_neighbors])
+
+                        yy = np.append(np.array(yy), y_neighbors)
+
+                    else:
+
+                        yy = np.append(
+                            np.append(np.array(yy), y_neighbors), y_neighbors2)
+                        zz = np.vstack([zz, z_neighbors, z_neighbors2])
 
                 if len(self.prior_var) != 0:
                     reg_mat = np.diag(
@@ -975,8 +1107,10 @@ class MacroRandomForest:
                     beta_hat = np.linalg.solve(
                         zz_T @ zz + reg_mat, np.matmul(zz_T, yy - zz @ prior_mean_vec)) + prior_mean_vec
 
+                    ###### INTERNAL NOTE: CHECK INDEXING HERE ########
                     b0 = np.transpose(
                         leafs_mat[i, 4: 4+len(self.z_pos)+1])
+                    ###### INTERNAL NOTE: CHECK INDEXING HERE ########
 
                 else:
 
@@ -1012,83 +1146,6 @@ class MacroRandomForest:
                     (1-self.HRW)*beta_hat+self.HRW*b0), reps=(len(ind_all), 1))
 
         return {"fitted": fitted, "beta_bank": beta_bank}
-
-    def _find_n_neighbours(self, array, i_d, n_neighbours, nrrd, rando_vec, ind_all=None, stage='splitting'):
-
-        if stage == 'splitting':
-            everybody_n = np.unique(np.concatenate((array.take(
-                i_d)+n_neighbours, array.take(i_d)-n_neighbours)))
-            everybody_n = np.array([
-                a for a in everybody_n if not a in array])
-
-        elif stage == 'prediction':
-            everybody_n = np.unique(np.concatenate(
-                (array+n_neighbours, array-n_neighbours)))
-            everybody_n = np.array([
-                a for a in everybody_n if not a in ind_all])
-
-        everybody_n = everybody_n[everybody_n >= 0]
-        everybody_n = everybody_n[everybody_n < nrrd]
-
-        if self.no_rw_trespassing:
-            everybody_n = np.intersect1d(everybody_n, rando_vec)
-
-        return everybody_n
-
-    def _random_walk_regularisation(self, yy, zz, everybody, everybody2, rw_regul_dat, ncrd):
-
-        add_neighbors = True
-        add_neighbors_2 = True
-
-        if len(everybody) == 0:
-            add_neighbors = False
-
-        else:
-
-            y_neighbors = np.matrix(
-                self.rw_regul*rw_regul_dat[everybody, 0])
-
-            z_neighbors = np.matrix(self.rw_regul * np.column_stack(
-                [np.repeat(1, repeats=len(everybody)), rw_regul_dat[everybody, 1: ncrd]]))
-
-        if len(everybody2) == 0:
-            add_neighbors_2 = False
-
-        else:
-            y_neighbors2 = np.matrix(
-                self.rw_regul ** 2 * rw_regul_dat[everybody2, 0])
-
-            z_neighbors2 = np.matrix(self.rw_regul ** 2*np.column_stack(
-                [np.repeat(1, repeats=len(everybody2)),
-                 np.matrix(rw_regul_dat[everybody2, 1: ncrd])]))
-
-        if add_neighbors and add_neighbors_2:
-
-            if len(zz) == len(self.z_pos) + 1:
-
-                yy = np.append(
-                    np.append(np.array(yy), y_neighbors), y_neighbors2)
-                zz = np.vstack(
-                    [np.transpose(zz), z_neighbors, z_neighbors2])
-
-            else:
-                yy = np.append(
-                    np.append(np.array(yy), y_neighbors), y_neighbors2)
-                zz = np.vstack([zz, z_neighbors, z_neighbors2])
-
-        elif add_neighbors == True and add_neighbors_2 == False:
-
-            yy = np.append(np.array(yy), y_neighbors)
-            zz = np.vstack(
-                [zz, z_neighbors])
-
-        elif add_neighbors == False and add_neighbors_2 == True:
-
-            yy = np.append(np.array(yy), y_neighbors2)
-            zz = np.vstack(
-                [zz, z_neighbors2])
-
-        return yy, zz
 
     def _pred_given_mrf(self):
 
