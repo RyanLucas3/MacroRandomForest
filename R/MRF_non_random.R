@@ -106,7 +106,7 @@ MRF = function(data,x.pos,oos.pos, y.pos=1, S.pos=2:ncol(data),
   ########################## Ensemble Loop ##########################################
   ###################################################################################
   ###################################################################################
-  
+
   for(b in 1:B){
     if(printb==TRUE){print(paste('Tree ',b,' out of ',B,sep=''))}
     
@@ -116,6 +116,7 @@ MRF = function(data,x.pos,oos.pos, y.pos=1, S.pos=2:ncol(data),
     if(bootstrap.opt==0){ #No Bootstrap/sub-sampling. Should not be used for looking at GTVPs.
       chosen.ones.plus = 1:(nrow(dat[-oos.pos,]))
       rando.vec = c(sort(chosen.ones.plus))}
+    
     if(bootstrap.opt==1){ #plain sub-sampling
       chosen.ones = sample(x=1:(nrow(dat[-oos.pos,])),replace = FALSE,size=BS4.frac*nrow(dat[-oos.pos,]))
       chosen.ones.plus = c(chosen.ones)
@@ -128,8 +129,6 @@ MRF = function(data,x.pos,oos.pos, y.pos=1, S.pos=2:ncol(data),
       rando.vec=which(chosen.ones.plus>quantile(chosen.ones.plus,1-BS4.frac))
       chosen.ones.plus=rando.vec
       rando.vec = c(sort(chosen.ones.plus))
-
-
     }
     if(bootstrap.opt>=3){ #plain bayesian bootstrap
       chosen.ones = rexp(rate=1,n=nrow(dat[-oos.pos,]))+0.1
@@ -431,6 +430,7 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
   # coerce to data.frame
   data.ori=as.data.frame(data)
   noise = 0.00000015*rnorm(nrow(data[rando.vec,])) #to avoid redundancy some bug
+  
   data[rando.vec,]=data[rando.vec,] +noise
   
   #keep selected obs (from subsampling)
@@ -472,16 +472,21 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
     all.stop.flags=c()
     
     for (j in to_calculate) {
+      
 
-      
-      
-      
-      
+
       # handle root node
       if (!is.na(tree_info[j, "FILTER"])) {
         # subset data according to the filter
         this_data <- subset(data, eval(parse(text = tree_info[j, "FILTER"])))
+        
+        old_filter = tree_info[j, "FILTER"]
+        
+
+        
+        
         find.out.who = subset(cbind(rando.vec,data), eval(parse(text = tree_info[j, "FILTER"])))
+        
         whoswho=find.out.who[,1]
         
         # get the design matrix
@@ -509,16 +514,16 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
       # classic mtry move
       select.from = base::sample(x=1:ncol(SET),size=round(ncol(SET)*frac),prob=prob.vec)
       
-      # select.from = c(4,5,6,7,8)
-      
       if(ncol(SET)<5){select.from=1:ncol(as.matrix(SET))}
       
       #########################################################################
-      
+
       ############## Splitter function block #################################
       splitting <-  apply(SET[,select.from],  MARGIN = 2, FUN = splitter.mrf, y = y,z=z,HRW=HRW,rw.regul=rw.regul,rando.vec=rando.vec,fast.rw=fast.rw,prior.mean=prior.mean,prior.var=prior.var,
                           regul.lambda=regul.lambda,min.leaf.fracz=min.leaf.fracz,minsize=minsize,b0=old_b0,ET=ET,ET.rate=ET.rate,no.rw.trespassing=no.rw.trespassing,
                           whoswho=whoswho,regul.dat=rw.regul.dat)
+      
+
       
       #########################################################################
       
@@ -530,15 +535,17 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
       tmp_splitter <- which.min(splitting[1,])
       
       
-      
       # define maxnode
       mn <- max(tree_info$NODE)
       
       # paste filter rules
       tmp_filter <- c(paste(names(tmp_splitter), ">=",
-                            round(splitting[2,tmp_splitter],3)),
-                      paste(names(tmp_splitter), "<",
-                            round(splitting[2,tmp_splitter], 3)))
+                            splitting[2,tmp_splitter]),
+                      paste(names(tmp_splitter), "<",splitting[2,tmp_splitter]))
+      
+
+
+      
 
       # Error handling! check if the splitting rule has already been invoked
       split_here  <- !sapply(tmp_filter,
@@ -549,26 +556,29 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
       if (!is.na(tree_info[j, "FILTER"])) {
         tmp_filter  <- paste(tree_info[j, "FILTER"],
                              tmp_filter, sep = " & ")
+        
       }
       
+      
+
       # get the number of observations in current node
       tmp_nobs <- sapply(tmp_filter,
                          FUN = function(i, x) {
                            nrow(subset(x = x, subset = eval(parse(text = i))))
                          },
                          x = this_data)
-      
+    
       # insufficient minsize for split
       if (any(tmp_nobs <= minsize)) {
         split_here <- rep(FALSE, 2)
       }
+    
       
       split_here <- rep(FALSE, 2)
       split_here[tmp_nobs >= minsize]=TRUE
 
       # create children data frame
       terminal = rep("SPLIT", 2)
-      
       
       terminal[tmp_nobs<minsize]="LEAF"
       terminal[tmp_nobs==0]="TRASH"
@@ -585,22 +595,23 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
 
       # overwrite state of current node
       
-
+      
       tree_info[j, "TERMINAL"] <- "PARENT"
       if(stop.flag){tree_info[j, "TERMINAL"]="LEAF"}
       
+
       # bind everything
       tree_info <- rbind(tree_info, children)
       
       # check if there are any open splits left
       do_splits <- !all(tree_info$TERMINAL != "SPLIT")
       
+
       all.stop.flags =append(all.stop.flags,stop.flag)
       
     } # end for
     if(all(all.stop.flags)){do_splits=FALSE}
   } # end while
-  
   
   ###################################################################################
   ###################################################################################
@@ -615,7 +626,6 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
   z <- cbind(data.ori[,z.pos])
   z = cbind(1,z)
   
-
   # calculate fitted values
   leafs <- tree_info[tree_info$TERMINAL == "LEAF", ]
   
@@ -665,7 +675,10 @@ one.mrf.tree <- function(data,y.pos=1, x.pos,z.pos,minsize,frac=1/3,oos.pos,min.
   if(VI.rep>0){
     #find out the X that were used -- quite useful when S_t is large, to reduce VI Compu demand
     whos.in = rep(NA,length(x.pos))
-    for(k in 1:length(x.pos)){whos.in[k]=any(grepl(colnames(data.ori)[x.pos[k]],leafs$FILTER,fixed=F)==TRUE)}
+    for(k in 1:length(x.pos)){
+
+      whos.in[k]=any(grepl(colnames(data.ori)[x.pos[k]],leafs$FILTER,fixed=F)==TRUE)}
+      
     
     beta.bank.shu = array(0,dim=c(dim(beta.bank),length(x.pos)+1))
     fitted.shu = array(0,dim=c(length(fitted),length(x.pos)+1))
@@ -805,7 +818,6 @@ pred.given.mrf=function(mrf.output,newdata){
         everybody=everybody[everybody>0]
         everybody=everybody[everybody<nrow(rw.regul.dat)+1]
         
-        print(nrow(rw.regul.dat)+1)
         if(no.rw.trespassing){everybody=intersect(everybody,rando.vec)}
         
         everybody2 = unique(append(ind+2,ind-2)) #find.out.who+2, find.out.who-2)
@@ -1014,8 +1026,6 @@ pred.given.tree=function(leafs,data.ori,oos.pos,z.pos,y,z,regul.lambda,prior.var
 
       beta.bank[ind.all,]= repmat(t(((1-HRW)*beta_hat+HRW*b0)),length(ind.all),1)
 
-      #print(sort(everybody))
-
     }}
   
 
@@ -1025,15 +1035,21 @@ pred.given.tree=function(leafs,data.ori,oos.pos,z.pos,y,z,regul.lambda,prior.var
 
 splitter.mrf <- function(x, y,z,regul.lambda,min.leaf.fracz,whoswho,regul.dat,rw.regul,prior.var=NULL,prior.mean=NULL,
                          ET=FALSE,ET.rate=0,no.rw.trespassing=FALSE,rando.vec=c(),fast.rw=TRUE,
-                         minsize,HRW,b0,cons_w=0.01,random.cuts=FALSE){
+                         minsize,HRW,b0,cons_w=0.01,random.cuts=FALSE, print.it = FALSE){
   
   uni_x = unique(x)
   splits <- sort(uni_x)
   z=cbind(1,as.matrix(z))
   
+
+
+  
+
+    
   y=as.matrix(y)
   sse <- rep(Inf,length(uni_x))
   the.seq = seq_along(splits)
+  
   if(!(rw.regul>0)){fast.rw=TRUE} #impose it if rw.gul not >0
   
   #sub-selection of potential splitting point, either to randomize further or to speed things up
@@ -1064,7 +1080,8 @@ splitter.mrf <- function(x, y,z,regul.lambda,min.leaf.fracz,whoswho,regul.dat,rw
   }else{
     b0 = solve(crossprod(z)+reg.mat,crossprod(z,y-z%*%prior.mean))+prior.mean #for the hierarchical prior
   }
-
+  
+  
   
   #######################################################################
   nrrd=nrow(regul.dat)
@@ -1072,8 +1089,13 @@ splitter.mrf <- function(x, y,z,regul.lambda,min.leaf.fracz,whoswho,regul.dat,rw
   
   for (i in the.seq) {
     sp <- splits[i]
+    
+
+    
     id1 = which(x < sp)
     id2= which(x >= sp)
+    
+ 
     
     #print(length(y[id2])>=(min.leaf.fracz*(ncol(z))))
     if( (length(id1)>=(min.leaf.fracz*(ncol(z)))) &
@@ -1087,15 +1109,19 @@ splitter.mrf <- function(x, y,z,regul.lambda,min.leaf.fracz,whoswho,regul.dat,rw
       
       if(!fast.rw){
         everybody = union(whoswho[id]+1,whoswho[id]-1) #find.out.who+2, find.out.who-2)
+        
+        
         everybody = setdiff(everybody,whoswho)
         everybody=everybody[everybody>0]
         everybody=everybody[everybody<nrrd+1]
+
         if(no.rw.trespassing){everybody=intersect(everybody,rando.vec)}
         everybody2 = union(whoswho[id]+2,whoswho[id]-2) #find.out.who+2, find.out.who-2)
         everybody2=setdiff(everybody2,whoswho)
         everybody2=setdiff(everybody2,everybody)
         everybody2=everybody2[everybody2>0]
         everybody2=everybody2[everybody2<nrrd+1]
+        
         if(no.rw.trespassing){everybody2=intersect(everybody2,rando.vec)}
         
         if(length(everybody)==0){
@@ -1168,10 +1194,16 @@ splitter.mrf <- function(x, y,z,regul.lambda,min.leaf.fracz,whoswho,regul.dat,rw
       
       #bvar or not
       if(is.null(prior.mean)){
+        
         p2=(zz.privy%*%((1-HRW)*solve(crossprod(zz)+reg.mat,crossprod(zz,yy))+HRW*b0)) #[1:length(id)]
+
       }else{
         p2=(zz.privy%*%((1-HRW)*solve(crossprod(zz)+reg.mat,crossprod(zz,yy-zz%*%prior.mean))+prior.mean+HRW*b0)) #[1:length(id)]
       }
+      
+
+      
+
       
       
       sse[i] <- sum((y[id1]-p1)^2) + sum((y[id2]-p2)^2)
@@ -1179,7 +1211,12 @@ splitter.mrf <- function(x, y,z,regul.lambda,min.leaf.fracz,whoswho,regul.dat,rw
     }
   }
   
+
   sse = DV.fun(sse,DV.pref=.15) #implement a mild preference for 'center' splits, allows trees to run deeper
+  
+
+
+  
   split_at <- splits[which.min(sse)]
   
   return(c(sse = min(sse), split = split_at,b0=b0))
