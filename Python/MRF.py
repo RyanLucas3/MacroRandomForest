@@ -1184,7 +1184,6 @@ def standard(Y):
 
     return {"Y": Y0, "mean": mean_y, "std": sd_y}
 
-
 def get_sharpe_ratio(daily_profit):
     mean = daily_profit.mean()
     std_dev = daily_profit.std()
