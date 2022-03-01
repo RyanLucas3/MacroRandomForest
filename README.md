@@ -8,7 +8,7 @@
 
 Ever wanted the power of a random forest with the interpretability of a linear regression model? Well now you can...
 
-This code base is the Python implementation of "The Macroeconomy as a Random Forest (MRF)" by Philippe Goulet Coulombe. 
+This code base is the official open-source Python implementation of "The Macroeconomy as a Random Forest (MRF)" by Philippe Goulet Coulombe. 
 
 MRF has at its core a basic linear regression equation that is intended to express a macroeconomic relationship. Unlike a regular linear regression though, in MRF our predictors are not entirely manually specified. Instead, they are chosen from our state variables by a random forest. 
 
