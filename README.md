@@ -3,7 +3,6 @@
 
 ---------------------------------------------------------------------------------------------------------------------------------
 *"Machine Learning is useful for macroeconomic forecasting but not so useful for macroeconomics" - Philippe Goulet Coulombe*
-
 -------------------------------------------------------------------------------------------------------------------------------
 <img width="875" alt="Screenshot 2022-03-03 at 13 00 17" src="https://user-images.githubusercontent.com/55145311/156571401-27b8b802-d33b-4599-acf8-d2b35064b30a.png">
 
