@@ -4,7 +4,7 @@
 ---------------------------------------------------------------------------------------------------------------------------------
 *"Machine Learning is useful for macroeconomic forecasting but not so useful for macroeconomics" - Philippe Goulet Coulombe*
 -------------------------------------------------------------------------------------------------------------------------------
-[MRF_logo_2.pdf](https://github.com/RyanLucas3/MacroRandomForest/files/8178240/MRF_logo_2.pdf)
+![MRF_logo_2](https://user-images.githubusercontent.com/55145311/156574873-e72ef942-6979-4639-9089-9b2e06f7a80e.svg)
 
 Ever wanted the power of a random forest with the interpretability of a linear regression model? Well now you can...
 
