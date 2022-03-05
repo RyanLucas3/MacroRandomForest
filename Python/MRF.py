@@ -239,18 +239,14 @@ class MacroRandomForest:
 
         self.std_stuff = standard(self.data)
 
-        result = []
-
         if self.parallelise:
 
             result = Parallel(n_jobs=self.n_cores)(delayed(self._one_MRF_tree)(b)
                                                    for b in Bs)
 
         else:
-            for b in Bs:
-                rt_output_test = self._one_MRF_tree(b)
-
-                result.append(rt_output_test)
+            
+            result = [self._one_MRF_tree(b) for b in Bs]
 
         for b in Bs:
 
