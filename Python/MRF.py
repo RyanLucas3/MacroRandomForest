@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import math
 from joblib import Parallel, delayed
+from Evaluation import *
+from helper import *
 
 
 class MacroRandomForest:
@@ -245,7 +247,7 @@ class MacroRandomForest:
                                                    for b in Bs)
 
         else:
-            
+
             result = [self._one_MRF_tree(b) for b in Bs]
 
         for b in Bs:
@@ -320,21 +322,6 @@ class MacroRandomForest:
             self.betas_shu_nonOVF[kk, :, :] = self.betas_shu_nonOVF[kk, :, :] / np.transpose(np.tile(how_many_in, reps=(
                 len(z_pos_effective)+1, 1)))
 
-        ###################################################################################
-        ###################################################################################
-        ########################## VI #####################################################
-        ###################################################################################
-        ###################################################################################
-
-        # if self.VI_rep > 0:
-        #     whos_in = np.repeat(
-        #         np.nan, repeats=len(self.x_pos))
-
-        #     beta_bank_shu = np.zeros(())
-
-        ###################################################################################
-        ###################################################################################
-
         if self.oos_flag:
             self.avg_beta_nonOVF = self.avg_beta_nonOVF[-self.fake_pos, :]
             self.avg_beta = self.avg_beta[-self.fake_pos, :]
@@ -361,11 +348,14 @@ class MacroRandomForest:
             self.betas_draws = None
             self.betas_draws_nonOVF = None
 
-        # else:
+        self.avg_pred = pd.DataFrame(self.avg_pred, columns=[
+                                     'Ensembled_Prediction'])
+        self.avg_pred.set_index(
+            self.oos_pos, inplace=True)
 
         return {"YandX": self.data.iloc[:, [self.y_pos] + self.z_pos],
-                "pred_ensemble": self.commitee,
-                "pred": self.avg_pred,
+                "pred_ensemble": self.avg_pred,
+                "pred": self.commitee,
                 # "important_S": self.impZ,
                 "S_names": self.data.iloc[:, self.x_pos].columns,
                 "betas": self.avg_beta_nonOVF,
@@ -1119,15 +1109,14 @@ class MacroRandomForest:
 
         return beta_bank_shu, fitted_shu
 
-    def financial_evaluation(self, close_prices):
-
+    def financial_evaluation(self, close_prices, k=1):
         '''
         Method for generating signals and backtesting the financial performance of MRF
         '''
 
         daily_profit = []
 
-        T_profit = np.arange(1, len(self.oos_pos)+1)
+        T_profit = np.arange(self.oos_pos[0] + k, self.oos_pos[-1]+1)
 
         for t in T_profit:
 
@@ -1149,81 +1138,10 @@ class MacroRandomForest:
         # Return the output.
         return daily_profit, cumulative_profit, annualised_return, sharpe_ratio, max_drawdown
 
-    # def statistical_evaluation(self):
+    def statistical_evaluation(self):
 
+        errors = collect_errors(self.oos_pos, self.avg_pred, self.ori_y)
+        MAE = get_MAE(errors, self.oos_pos)
+        MSE = get_MSE(errors, self.oos_pos)
 
-def DV_fun(sse, DV_pref=0.25):
-    '''
-    implement a middle of the range preference for middle of the range splits.
-    '''
-
-    seq = np.arange(1, len(sse)+1)
-    down_voting = 0.5*seq**2 - seq
-    down_voting = down_voting/np.mean(down_voting)
-    down_voting = down_voting - min(down_voting) + 1
-    down_voting = down_voting**DV_pref
-
-    return sse*down_voting
-
-
-def standard(Y):
-    '''
-    Function to standardise the data. Remember we are doing ridge.
-    '''
-
-    Y = np.matrix(Y)
-    size = Y.shape
-    mean_y = Y.mean(axis=0)
-    sd_y = Y.std(axis=0, ddof=1)
-    Y0 = (Y - np.repeat(mean_y,
-                        repeats=size[0], axis=0)) / np.repeat(sd_y, repeats=size[0], axis=0)
-
-    return {"Y": Y0, "mean": mean_y, "std": sd_y}
-
-def get_sharpe_ratio(daily_profit):
-    mean = daily_profit.mean()
-    std_dev = daily_profit.std()
-    return 252**(0.5)*mean/std_dev
-
-def get_max_dd_and_date(cumulative_profit):
-    rolling_max = (cumulative_profit+1).cummax()
-    period_drawdown = (
-        ((1+cumulative_profit)/rolling_max) - 1).astype(float)
-    drawdown = round(period_drawdown.min(), 3)
-    return drawdown
-
-def get_annualised_return(cumulative_profit, T_profit):
-    return cumulative_profit.iloc[-1]*(252/len(T_profit))
-
-
-def trading_strategy(model_forecasts, stock_price, t, k=1):
-    PL_t = 0
-    signal_t_minus_1 = 0
-
-    # Long if return prediction > 0 ; otherwise short.
-    for i in range(1, k+1):
-        if model_forecasts.iloc[t-i] > 0:
-            signal_t_minus_1 += 1
-        elif model_forecasts.iloc[t-i] < 0:
-            signal_t_minus_1 -= 1
-    PL_t += (1/k)*signal_t_minus_1 * \
-        ((stock_price[t] - stock_price[t-1])/stock_price[t-1])
-
-    return PL_t
-
-
-def get_MAE(error_dict, model, T_model):
-    abs_errors = map(abs, list(error_dict[model].values()))
-    sum_abs_errors = sum(abs_errors)
-    return (1/len(T_model))*sum_abs_errors
-
-
-def get_MSE(error_dict, model, T_model):
-    errors_as_array = np.array(list(error_dict[model].values()))
-    sum_squared_errors = sum(np.power(errors_as_array, 2))
-    return (1/len(T_model))*sum_squared_errors
-
-
-def get_perc_correct(direction_correct_dict, model, T_model):
-    amount_correct = direction_correct_dict[model]
-    return 100*(1/len(T_model))*amount_correct
+        return MAE, MSE
