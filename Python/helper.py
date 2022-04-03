@@ -3,7 +3,11 @@ import numpy as np
 
 def DV_fun(sse, DV_pref=0.25):
     '''
-    implement a middle of the range preference for middle of the range splits.
+    Implementing a middle of the range preference for middle of the range splits.
+
+    Args:
+        sse (np.array): Sum of Squared Errors obtained from split-sample OLS.
+        DV_pref (float): Parameter controlling the rate of down-voting. 
     '''
 
     seq = np.arange(1, len(sse)+1)
@@ -18,6 +22,12 @@ def DV_fun(sse, DV_pref=0.25):
 def standard(Y):
     '''
     Function to standardise the data. Remember we are doing ridge.
+
+    Args: 
+        - Y (np.matrix): Matrix of variables to standardise.
+
+    Returns:
+        - Standardised Data (dict): Including standardised matrix ("Y"), mean ("mean") and standard deviation "std"
     '''
 
     Y = np.matrix(Y)

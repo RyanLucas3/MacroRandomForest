@@ -1,6 +1,8 @@
+from re import S
 import numpy as np
 import pandas as pd
 import math
+import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 from Evaluation import *
 from helper import *
@@ -160,10 +162,6 @@ class MacroRandomForest:
             self.min_leaf_fracz = 2
             print('min.leaf.frac.of.x forced to 2. Let your trees run deep!')
 
-        # print(self.data.columns)
-        # if self.data.columns == None:
-        #     raise Exception('Data frame must have column names.')
-
         if self.min_leaf_fracz*(len(self.z_pos)+1) < 2:
             self.min_leaf_fracz = 2/(len(self.z_pos)+1)
             print(f'Min.leaf.frac.of.x was too low. Thus, it was forced to ', 2 /
@@ -178,11 +176,7 @@ class MacroRandomForest:
             self.data = self.new_data
             self.oos_pos = [len(self.data)-1, len(self.data)]
             self.fake_pos = self.oos_pos
-
-            ################### INTERNAL NOTE: RYAN ###################
-            # Does this have the same effect as rownames = c() in R? I think this may be a genuine difference.
             self.data.index = None
-            ################### INTERNAL NOTE: RYAN ###################
 
         else:
             self.oos_flag = False
@@ -268,12 +262,6 @@ class MacroRandomForest:
                 self.forest[[b]] = rt_output['tree']
                 self.random_vec[[b]] = rando_vec
 
-            # if(bootstrap.opt==3 |bootstrap.opt==4){ #for Bayesian Bootstrap, gotta impose a cutoff on what is OOS and what is not.
-            #     rando.vec=which(chosen.ones.plus>quantile(chosen.ones.plus,.5))
-            #     rt.output$betas[is.na(rt.output$betas)]=0
-            #     rt.output$pred[is.na(rt.output$pred)]=0
-            #     }
-
             self.commitee[b, :] = rt_output['pred']
             self.avg_pred = pd.DataFrame(self.commitee).mean(axis=0)
 
@@ -354,17 +342,12 @@ class MacroRandomForest:
             self.oos_pos, inplace=True)
 
         return {"YandX": self.data.iloc[:, [self.y_pos] + self.z_pos],
-                "pred_ensemble": self.avg_pred,
-                "pred": self.commitee,
-                # "important_S": self.impZ,
+                "pred_ensemble": self.commitee,
+                "pred": self.avg_pred,
                 "S_names": self.data.iloc[:, self.x_pos].columns,
                 "betas": self.avg_beta_nonOVF,
                 "betas_draws_raw": self.beta_draws,
                 "betas_draws": self.betas_draws_nonOVF,
-                # "VI_betas": self.VI_betas_nonOVF,
-                # "VI_oob": self.VI_oob,
-                # "VI_oos": self.VI_poos,
-                # "VI_betas_raw": self.VI_betas,
                 "model": {"forest": self.forest,
                           "data": self.data,
                           "regul_lambda": self.regul_lambda,
@@ -422,21 +405,13 @@ class MacroRandomForest:
 
             rando_vec = sorted(chosen_ones_plus.tolist())
 
-            # self.rando_vec = np.arange(49, 150)
+            # rando_vec = np.arange(0, 100)
 
         elif self.bootstrap_opt == 3:  # Plain bayesian bootstrap
             chosen_ones = np.random.exponential(
                 scale=1, size=len(self.data.iloc[-self.oos_pos, :]))
             chosen_ones_plus = chosen_ones/np.mean(chosen_ones)
             rando_vec = chosen_ones_plus
-
-        # Block Bayesian Bootstrap. Recommended for forecasting.
-        elif self.bootstrap_opt == 4:
-
-            pass
-            ################### INTERNAL NOTE: RYAN ###################
-            # To hear from Isaac
-            ################### INTERNAL NOTE: RYAN ###################
 
         return rando_vec
 
@@ -530,8 +505,8 @@ class MacroRandomForest:
                 filterr = tree_info.loc[j, "FILTER"]
 
                 if filterr != None:
-                    # subset data according to the filter
 
+                    # subset data according to the filter
                     parsed_filter = filterr.replace("[", "data[")
 
                     this_data = data[eval(parsed_filter)]
@@ -564,9 +539,6 @@ class MacroRandomForest:
 
                 ############## Select potential candidates for this split ###############
                 SET = X.iloc[:, 1:]  # all X's but the intercept
-
-                # if(self.y_pos<self.trend_pos):
-                #     trend_pos=trend_pos-1 #so the user can specify trend pos in terms of position in the data matrix, not S_t
 
                 n_cols_split = len(SET.columns)
 
@@ -603,9 +575,6 @@ class MacroRandomForest:
 
                 tmp_filter = [f"[{tmp_splitter}] >= {criteria}",
                               f"[{tmp_splitter}] < {criteria}"]
-
-                # if tmp_splitter == 7:
-                #     print(tmp_filter)
 
                 if filterr != None:
                     tmp_filter = ["(" + filterr + ")" + " & " + "(" + f + ")"
@@ -670,8 +639,6 @@ class MacroRandomForest:
         ###################################################################################
         ###################################################################################
 
-        fitted_scaled = fitted
-
         fitted = fitted * \
             self.std_stuff['std'].flat[self.y_pos] + \
             self.std_stuff['mean'].flat[self.y_pos]
@@ -689,13 +656,6 @@ class MacroRandomForest:
 
             betas[:, 0] = betas[:, 0] - betas[:, kk] * \
                 self.std_stuff['mean'].flat[self.z_pos[kk-1]]
-
-        ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
-
-        ####################### VI #######################
-
-        # VI = self._variable_importance # do something with this
-        ####################### VI #######################
 
         beta_bank_shu = np.stack(
             [np.zeros(shape=beta_bank.shape)]*(len(self.x_pos)+1))
@@ -718,8 +678,6 @@ class MacroRandomForest:
         uni_x = np.unique(x)
 
         splits = sorted(uni_x)
-
-        # rounded_x = np.round(x.copy(), 7)
 
         z = np.column_stack([np.ones(len(z)), z])
         min_frac_times_no_cols = self.min_leaf_fracz*z.shape[1]
@@ -820,6 +778,7 @@ class MacroRandomForest:
                                                               ncrd)
 
                 zz_T = zz.T
+
                 # bvars or not
                 if not self.have_prior_mean:
 
@@ -1059,7 +1018,9 @@ class MacroRandomForest:
         return yy, zz
 
     def _variable_importance(self, leafs, fitted, fitted_scaled, y, z, rando_vec, rw_regul_dat):
-
+        '''
+        Not supported currently
+        '''
         if self.VI_rep > 0:
 
             whos_in = np.repeat(np.nan, repeats=len(self.x_pos), axis=0)
@@ -1109,10 +1070,80 @@ class MacroRandomForest:
 
         return beta_bank_shu, fitted_shu
 
-    def financial_evaluation(self, close_prices, k=1):
+    def band_plots(self):
+
+        if self.cheap_look_at_GTVPs:
+            if self.B*(1-self.BS4_frac) < 30:
+                print(
+                    'Warning: those bands may have missing values or be innacurate if B is low and subsampling.rate is high.')
+
+        bands = np.stack(
+            [np.zeros(shape=(len(self.data), len(self.z_pos)+1))]*2)
+
+        bands[0] = self.avg_beta_nonOVF
+        bands[1] = self.avg_beta_nonOVF
+
+        for t in range(len(self.data)):
+            for k in range(len(self.z_pos) + 1):
+                bands[0, t, k] = np.nanquantile(
+                    self.betas_draws_nonOVF[:, t, k], 0.16)
+                bands[1, t, k] = np.nanquantile(
+                    self.betas_draws_nonOVF[:, t, k], 0.84)
+
+        if len(self.z_pos) + 1 > 2:
+            fig, ax = plt.subplots(
+                nrows=2, ncols=2, gridspec_kw={"wspace": 0.1})
+
+        else:
+            fig, ax = plt.subplots(nrows=1, ncols=2)
+
+        # display(bands[0])
+        data = np.matrix(self.data)
+        z_mat = np.hstack([np.ones(shape=(len(data), 1)), data[:, self.z_pos]])
+
+        keep_OLS = np.linalg.inv(
+            (z_mat.T@z_mat)) @ (z_mat.T @ data[:, self.y_pos])
+
+        ax_positions = [ax[0, 0], ax[0, 1], ax[1, 0], ax[1, 1]]
+
+        beta_titles = [r'$\beta_0$', r'$\beta_1$', r'$\beta_2$', r'$\beta_3$']
+
+        for k in range(len(self.z_pos) + 1):
+
+            ax_positions[k].plot(
+                self.avg_beta_nonOVF[:, k].reshape(-1, 1), color='blue', label='Posterior Mean')
+
+            for i in [0, 1]:
+                if i == 0:
+                    ax_positions[k].plot(bands[i, :, k].T,
+                                         color='orange', label="16% and 84% Quantiles")
+                elif i == 1:
+                    ax_positions[k].plot(bands[i, :, k].T,
+                                         color='orange', label="_nolegend_")
+
+            ax_positions[k].axhline(
+                y=keep_OLS[k], color="green", linestyle='-', label="OLS")
+
+            ax_positions[k].set_title(beta_titles[k], fontsize=13)
+
+            if not self.oos_flag:
+                ax_positions[k].axvline(
+                    min(self.oos_pos), linestyle='--', color='black', label='OOS Start')
+                ax_positions[k].legend(loc='best')
+            else:
+                ax_positions[k].legend(loc='best')
+
+        fig.set_size_inches([20, 10])
+
+        return None
+
+    def financial_evaluation(self, model_forecasts, close_prices, k=1):
         '''
         Method for generating signals and backtesting the financial performance of MRF
         '''
+
+        if isinstance(close_prices.index[0], str):
+            close_prices = close_prices.reset_index(drop=True)
 
         daily_profit = []
 
@@ -1121,7 +1152,7 @@ class MacroRandomForest:
         for t in T_profit:
 
             # Produce a trading signal and calculate daily profit.
-            daily_profit.append(trading_strategy(model_forecasts=self.avg_pred,
+            daily_profit.append(trading_strategy(model_forecasts,
                                                  stock_price=close_prices,
                                                  k=1,
                                                  t=t))
@@ -1138,7 +1169,41 @@ class MacroRandomForest:
         # Return the output.
         return daily_profit, cumulative_profit, annualised_return, sharpe_ratio, max_drawdown
 
+    def monkey_trader_plot(self, close_prices):
+
+        np.random.seed(1)
+        fig, ax = plt.subplots()
+
+        if isinstance(close_prices.index[0], str):
+            close_prices = close_prices.reset_index(drop=True)
+
+        for i in range(1, 101):
+            plots = self.financial_evaluation(pd.DataFrame(np.random.normal(0, 1, size=len(
+                self.oos_pos)), index=self.oos_pos), close_prices.loc[self.oos_pos])[1].plot(ax=ax, color='grey', label='_nolegend_')
+
+            if i == 100:
+                plots = self.financial_evaluation(pd.DataFrame(np.random.normal(0, 1, size=len(
+                    self.oos_pos)), index=self.oos_pos), close_prices.loc[self.oos_pos])[1].plot(ax=ax, color='grey', label="Monkey Traders")
+
+        benchmark = (close_prices.loc[self.oos_pos] - close_prices.loc[self.oos_pos].shift(
+            1))/close_prices.loc[self.oos_pos].shift(1)
+        self.financial_evaluation(self.avg_pred, close_prices)[0].cumsum().plot(
+            ax=ax, linewidth=3, color='green', label="MRF")
+        benchmark.cumsum().reset_index(drop=True).plot(
+            ax=ax, color='blue', linewidth=3, label='Buy and hold')
+
+        fig.set_size_inches(18, 8)
+        ax.set_title("Backtested MRF trading strategy")
+        ax.set_ylabel("Cumulative Profit")
+        ax.set_xlabel(r"OOS $t$")
+        ax.legend(loc=2, fontsize=15)
+        ax.grid()
+        plt.show()
+
     def statistical_evaluation(self):
+        '''
+        Method for evaluating statistical performance metrics, MAE and MSE, for MRF predictions
+        '''
 
         errors = collect_errors(self.oos_pos, self.avg_pred, self.ori_y)
         MAE = get_MAE(errors, self.oos_pos)
