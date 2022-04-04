@@ -854,20 +854,23 @@ class MacroRandomForest:
             ind = np.array([j for j in ind_all if j <
                             self.oos_pos[0] if not np.isnan(j)])
 
-            if len(ind_all) > 0:
+            if len(ind_all) > 0 and len(ind) > 0:
 
                 yy = np.matrix(self.ori_y.iloc[ind])
 
-                if len(ind) == 1:
-                    zz = ori_z[ind, :].T
-                    zz_all = ori_z[ind_all, :]
+                # if len(ind) == 1:
 
-                    if len(ind_all) == 1:
-                        zz_all = ori_z[ind_all, :].T
+                #     zz = ori_z[ind, :].T
+                #     zz_all = ori_z[ind_all, :]
 
-                else:
-                    zz = ori_z[ind, :]
-                    zz_all = ori_z[ind_all, :]
+                #     if len(ind_all) == 1:
+                #         zz_all = ori_z[ind_all, :].T
+
+                # else:
+
+                zz = ori_z[ind, :]
+
+                zz_all = ori_z[ind_all, :]
 
                 # Simple ridge prior
                 reg_mat = np.identity(len(self.z_pos) + 1)*self.regul_lambda
@@ -909,25 +912,8 @@ class MacroRandomForest:
 
                     zz_T = zz.T
 
-                    if zz_T.shape[1] == yy.shape[0]:
-
-                        try:
-                            beta_hat = np.linalg.solve(
-                                np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
-                        except:
-                            print(zz_T.shape)
-                            print(yy.shape)
-
-                    elif zz_T.shape[1] != yy.shape[0]:
-
-                        if yy.T.shape[0] == zz_T.shape[1]:
-
-                            beta_hat = np.linalg.solve(
-                                np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy.T).T)
-
-                        elif yy.T.shape[0] != zz_T.shape[1]:
-                            beta_hat = np.linalg.solve(
-                                np.matmul(zz_T, zz) + reg_mat, np.matmul(zz, yy.T).T)
+                    beta_hat = np.linalg.solve(
+                        np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
 
                     b0 = np.transpose(leafs_mat[i, 4: 4+len(self.z_pos)+1])
 
