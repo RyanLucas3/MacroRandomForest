@@ -1,4 +1,5 @@
 from re import S
+from tkinter import Y
 import numpy as np
 import pandas as pd
 import math
@@ -60,6 +61,7 @@ class MacroRandomForest:
         self.trend_pos = max(self.S_pos)
         self.trend_push = trend_push
         self.cons_w = 0.01
+        self.ori_index = self.data.copy().index
 
         if len(self.prior_mean) != 0:
             self.have_prior_mean = True
@@ -854,19 +856,9 @@ class MacroRandomForest:
             ind = np.array([j for j in ind_all if j <
                             self.oos_pos[0] if not np.isnan(j)])
 
-            if len(ind_all) > 0 and len(ind) > 0:
+            if len(ind_all) > 0:
 
-                yy = np.matrix(self.ori_y.iloc[ind])
-
-                # if len(ind) == 1:
-
-                #     zz = ori_z[ind, :].T
-                #     zz_all = ori_z[ind_all, :]
-
-                #     if len(ind_all) == 1:
-                #         zz_all = ori_z[ind_all, :].T
-
-                # else:
+                yy = np.array(self.ori_y.iloc[ind])
 
                 zz = ori_z[ind, :]
 
@@ -893,6 +885,11 @@ class MacroRandomForest:
 
                     yy, zz = self._random_walk_regularisation(
                         yy, zz, everybody, everybody2, regul_mat, ncrd)
+
+                if yy.ndim == 2:
+                    print(yy)
+                    yy = yy.reshape((-1,))
+                    print(yy)
 
                 if len(self.prior_var) != 0:
 
@@ -1109,7 +1106,7 @@ class MacroRandomForest:
 
         beta_titles = [r'$\beta_0$', r'$\beta_1$', r'$\beta_2$', r'$\beta_3$']
 
-        for k in range(len(self.z_pos) + 1):
+        for k in range(len(self.z_pos)):
 
             ax_positions[k].plot(
                 self.avg_beta_nonOVF[:, k].reshape(-1, 1), color='blue', label='Posterior Mean')
@@ -1133,6 +1130,9 @@ class MacroRandomForest:
                 ax_positions[k].legend(loc='best')
             else:
                 ax_positions[k].legend(loc='best')
+
+            print(ax_positions[k].get_xticks())
+            # ax_positions[k].set_xticklabels(self.ori_index)
 
         fig.set_size_inches([20, 10])
 
