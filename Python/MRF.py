@@ -910,12 +910,24 @@ class MacroRandomForest:
                     zz_T = zz.T
 
                     if zz_T.shape[1] == yy.shape[0]:
-                        beta_hat = np.linalg.solve(
-                            np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
+
+                        try:
+                            beta_hat = np.linalg.solve(
+                                np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
+                        except:
+                            print(zz_T.shape)
+                            print(yy.shape)
 
                     elif zz_T.shape[1] != yy.shape[0]:
-                        beta_hat = np.linalg.solve(
-                            np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy.T).T)
+
+                        if yy.T.shape[0] == zz_T.shape[1]:
+
+                            beta_hat = np.linalg.solve(
+                                np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy.T).T)
+
+                        elif yy.T.shape[0] != zz_T.shape[1]:
+                            beta_hat = np.linalg.solve(
+                                np.matmul(zz_T, zz) + reg_mat, np.matmul(zz, yy.T).T)
 
                     b0 = np.transpose(leafs_mat[i, 4: 4+len(self.z_pos)+1])
 
