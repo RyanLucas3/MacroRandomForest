@@ -405,8 +405,6 @@ class MacroRandomForest:
 
             rando_vec = sorted(chosen_ones_plus.tolist())
 
-            # rando_vec = np.arange(0, 100)
-
         elif self.bootstrap_opt == 3:  # Plain bayesian bootstrap
             chosen_ones = np.random.exponential(
                 scale=1, size=len(self.data.iloc[-self.oos_pos, :]))
@@ -911,8 +909,13 @@ class MacroRandomForest:
 
                     zz_T = zz.T
 
-                    beta_hat = np.linalg.solve(
-                        np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
+                    if zz_T.shape[1] == yy.shape[0]:
+                        beta_hat = np.linalg.solve(
+                            np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy).T)
+
+                    elif zz_T.shape[1] != yy.shape[0]:
+                        beta_hat = np.linalg.solve(
+                            np.matmul(zz_T, zz) + reg_mat, np.matmul(zz_T, yy.T).T)
 
                     b0 = np.transpose(leafs_mat[i, 4: 4+len(self.z_pos)+1])
 
