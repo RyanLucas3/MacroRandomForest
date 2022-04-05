@@ -25,35 +25,36 @@ class MacroRandomForest:
                  prior_var=[], prior_mean=[], subsampling_rate=0.75,
                  rw_regul=0.75, keep_forest=False, block_size=12,
                  fast_rw=True, ridge_lambda=0.1, HRW=0,
-                 B=50, resampling_opt=2, print_b=True, parallelise=True, n_cores=-1):
+                 B=50, resampling_opt=2, print_b=True,
+                 parallelise=True, n_cores=-1):
 
         ######## INITIALISE VARIABLES ###########
 
         # Dataset handling
         self.data, self.x_pos, self.oos_pos, self.y_pos, self.S_pos = data, x_pos, oos_pos, y_pos, S_pos
-
+        self.ori_col_names = self.data.copy().columns
         self.data.columns = [i for i in range(len(data.columns))]
 
         # Properties of the tree
         self.minsize, self.mtry_frac, self.min_leaf_frac_of_x = minsize, mtry_frac, min_leaf_frac_of_x
 
-        # [Insert general categorisation]
-        self.VI, self.ERT, self.quantile_rate, self.S_priority_vec = VI, ERT, quantile_rate, S_priority_vec
+        # Hyperparameters
+        self.VI, self.ERT, self.quantile_rate, self.S_priority_vec, self.B, self.resampling_opt, self.HRW = VI, ERT, quantile_rate, S_priority_vec, B, resampling_opt, HRW
 
-        # [Insert general categorisation]
-        self.random_x, self.howmany_random_x, self.howmany_keep_best_VI = random_x, howmany_random_x, howmany_keep_best_VI
+        # Properties of the randomness
+        self.random_x, self.howmany_random_x, self.howmany_keep_best_VI, self.subsampling_rate = random_x, howmany_random_x, howmany_keep_best_VI, subsampling_rate
 
-        # [Insert general categorisation]
-        self.cheap_look_at_GTVPs, self.prior_var, self.prior_mean = cheap_look_at_GTVPs, prior_var, prior_mean
+        # Bayesian Priors
+        self.prior_var, self.prior_mean = prior_var, prior_mean
 
-        # [Insert general categorisation]
-        self.subsampling_rate, self.rw_regul, self.keep_forest = subsampling_rate, rw_regul, keep_forest
+        # Regularisation (ridge) options:
+        self.rw_regul, self.ridge_lambda = rw_regul, ridge_lambda
 
-        # [Insert general categorisation]
+        # User Options
+        self.keep_forest, self.cheap_look_at_GTVPs, self.print_b = keep_forest, cheap_look_at_GTVPs, print_b
+
+        # Speed Variables
         self.block_size, self.fast_rw, self.parallelise, self.n_cores = block_size, fast_rw, parallelise, n_cores
-
-        # [Insert general categorisation]
-        self.ridge_lambda, self.HRW, self.B, self.resampling_opt, self.print_b = ridge_lambda, HRW, B, resampling_opt, print_b
 
         if isinstance(self.S_pos, str):
             self.S_pos = np.arange(1, len(self.data.columns))
@@ -72,6 +73,7 @@ class MacroRandomForest:
         self._name_translations()
         self._array_setup()
         self._input_safety_checks()
+
 
     def _name_translations(self):
         '''
@@ -1088,12 +1090,10 @@ class MacroRandomForest:
                 bands[1, t, k] = np.nanquantile(
                     self.betas_draws_nonOVF[:, t, k], 0.84)
 
-        if len(self.z_pos) + 1 > 2:
-            fig, ax = plt.subplots(
-                nrows=2, ncols=2, gridspec_kw={"wspace": 0.1})
+        nrows = math.ceil(len(self.z_pos)/2)
 
-        else:
-            fig, ax = plt.subplots(nrows=1, ncols=2)
+        fig, ax = plt.subplots(
+            nrows=nrows, ncols=2, gridspec_kw={"wspace": 0.1, 'hspace': 0.3})
 
         # display(bands[0])
         data = np.matrix(self.data)
@@ -1102,11 +1102,31 @@ class MacroRandomForest:
         keep_OLS = np.linalg.inv(
             (z_mat.T@z_mat)) @ (z_mat.T @ data[:, self.y_pos])
 
-        ax_positions = [ax[0, 0], ax[0, 1], ax[1, 0], ax[1, 1]]
+        ax_positions = []
 
-        beta_titles = [r'$\beta_0$', r'$\beta_1$', r'$\beta_2$', r'$\beta_3$']
+        j = 0
+        k = 0
 
-        for k in range(len(self.z_pos)):
+        for i in range(len(self.z_pos)+1):
+
+            ax_positions.append(ax[k, j])
+            if i % 2 == 0:
+                j += 1
+
+            if i % 2 != 0:
+                k += 1
+                j -= 1
+
+        original_x_names = [self.ori_col_names[i] for i in self.z_pos]
+
+        beta_titles = [r"$\beta_0$" + ": Const", r"$\beta_1$", r"$\beta_2$", r"$\beta_3$", r"$\beta_4$", r"$\beta_5$", r"$\beta_6$", r"$\beta_7$", r"$\beta_8$", r"$\beta_9$",
+                       r"$\beta_10$", r"$\beta_11$", r"$\beta_12$", r"$\beta_13$", r"$\beta_14$", r"$\beta_15$", r"$\beta_16$", r"$\beta_17$", r"$\beta_18$"]
+
+        for i in range(len(original_x_names)):
+
+            beta_titles[1+i] += f": {original_x_names[i]}"
+
+        for k in range(len(self.z_pos) + 1):
 
             ax_positions[k].plot(
                 self.avg_beta_nonOVF[:, k].reshape(-1, 1), color='blue', label='Posterior Mean')
@@ -1122,7 +1142,7 @@ class MacroRandomForest:
             ax_positions[k].axhline(
                 y=keep_OLS[k], color="green", linestyle='-', label="OLS")
 
-            ax_positions[k].set_title(beta_titles[k], fontsize=13)
+            ax_positions[k].set_title(beta_titles[k], fontsize=16)
 
             if not self.oos_flag:
                 ax_positions[k].axvline(
@@ -1131,10 +1151,9 @@ class MacroRandomForest:
             else:
                 ax_positions[k].legend(loc='best')
 
-            print(ax_positions[k].get_xticks())
-            # ax_positions[k].set_xticklabels(self.ori_index)
+            ax_positions[k].set_xlabel(r"$t$", fontsize=13)
 
-        fig.set_size_inches([20, 10])
+        fig.set_size_inches([20, nrows*5])
 
         return None
 
