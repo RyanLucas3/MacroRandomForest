@@ -74,7 +74,6 @@ class MacroRandomForest:
         self._array_setup()
         self._input_safety_checks()
 
-
     def _name_translations(self):
         '''
         Translation block and misc.
@@ -1119,12 +1118,12 @@ class MacroRandomForest:
 
         original_x_names = [self.ori_col_names[i] for i in self.z_pos]
 
-        beta_titles = [r"$\beta_0$" + ": Const", r"$\beta_1$", r"$\beta_2$", r"$\beta_3$", r"$\beta_4$", r"$\beta_5$", r"$\beta_6$", r"$\beta_7$", r"$\beta_8$", r"$\beta_9$",
-                       r"$\beta_10$", r"$\beta_11$", r"$\beta_12$", r"$\beta_13$", r"$\beta_14$", r"$\beta_15$", r"$\beta_16$", r"$\beta_17$", r"$\beta_18$"]
+        beta_titles = [r"$\beta_{0,t}$" + " : Const", r"$\beta_{1,t}$", r"$\beta_{2, t}$", r"$\beta_{3, t}$", r"$\beta_{4, t}$", r"$\beta_{5 ,t}$", r"$\beta_{6, t}$", r"$\beta_{7, t}$", r"$\beta_{8, t}$", r"$\beta_{9, t}$",
+                       r"$\beta_{10,t}$", r"$\beta_{11, t}$", r"$\beta_{12, t}$", r"$\beta_{13, t}$", r"$\beta_{14, t}$", r"$\beta_{15, t}$", r"$\beta_{16, t}$", r"$\beta_{17, t}$", r"$\beta_{18, t}$"]
 
         for i in range(len(original_x_names)):
 
-            beta_titles[1+i] += f": {original_x_names[i]}"
+            beta_titles[1+i] += f" : {original_x_names[i]}"
 
         for k in range(len(self.z_pos) + 1):
 
@@ -1147,13 +1146,16 @@ class MacroRandomForest:
             if not self.oos_flag:
                 ax_positions[k].axvline(
                     min(self.oos_pos), linestyle='--', color='black', label='OOS Start')
-                ax_positions[k].legend(loc='best')
+
             else:
                 ax_positions[k].legend(loc='best')
 
             ax_positions[k].set_xlabel(r"$t$", fontsize=13)
 
         fig.set_size_inches([20, nrows*5])
+
+        ax_positions[0].legend(loc='best', bbox_to_anchor=(
+            1.6, 1.3), ncol=4, fontsize=14)
 
         return None
 
