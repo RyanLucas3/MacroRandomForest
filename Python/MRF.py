@@ -1,5 +1,3 @@
-from re import S
-from tkinter import Y
 import numpy as np
 import pandas as pd
 import math
@@ -17,7 +15,7 @@ class MacroRandomForest:
     for a linear (macroeconomic) equation. See: https://arxiv.org/pdf/2006.12724.pdf for more details.
     '''
 
-    def __init__(self, data, x_pos, oos_pos, S_pos='', y_pos=1,
+    def __init__(self, data, x_pos, oos_pos, S_pos='', y_pos=0,
                  minsize=10, mtry_frac=1/3, min_leaf_frac_of_x=1,
                  VI=False, ERT=False, quantile_rate=None,
                  S_priority_vec=None, random_x=False, trend_push=1, howmany_random_x=1,
@@ -238,6 +236,7 @@ class MacroRandomForest:
 
         self.std_stuff = standard(self.data)
 
+
         if self.parallelise:
 
             result = Parallel(n_jobs=self.n_cores)(delayed(self._one_MRF_tree)(b)
@@ -293,7 +292,7 @@ class MacroRandomForest:
             rt_output['betas'][np.where(in_out == 0), :] = np.repeat(
                 np.nan, repeats=len(z_pos_effective) + 1)
 
-            self.betas_draws_nonOVF[b] = rt_output['betas']
+            self.betas_draws_nonOVF[b, :, :] = rt_output['betas']
 
             if self.VI_rep > 0:
                 self.pred_kf[:, self.b, -rando_vec]
@@ -649,11 +648,10 @@ class MacroRandomForest:
         betas[:, 0] = beta_bank[:, 0]*self.std_stuff['std'].flat[self.y_pos] + \
             self.std_stuff['mean'].flat[self.y_pos]
 
-        ###### INTERNAL NOTE: CHECK if kk - 2 instead #######
         for kk in range(1, betas.shape[1]):
 
             betas[:, kk] = beta_bank[:, kk]*self.std_stuff['std'].flat[self.y_pos] / \
-                self.std_stuff['std'].flat[self.z_pos[kk-1]]  # kk - 2? Check
+                self.std_stuff['std'].flat[self.z_pos[kk-1]]
 
             betas[:, 0] = betas[:, 0] - betas[:, kk] * \
                 self.std_stuff['mean'].flat[self.z_pos[kk-1]]
@@ -702,11 +700,13 @@ class MacroRandomForest:
 
                 samp = splits[min_frac_times_no_cols-1: len(
                     splits) - min_frac_times_no_cols]
+
                 splits = np.random.choice(
                     samp, size=max(1, self.ET_rate*len(samp)), replace=False)
+
                 the_seq = np.arange(0, len(splits))
 
-            elif self.ET == False and len(z) > 4*self.minsize:
+            elif self.ET == False and z.shape[0] > 4*self.minsize:
 
                 samp = splits[min_frac_times_no_cols-1: len(
                     splits) - min_frac_times_no_cols]
@@ -857,7 +857,7 @@ class MacroRandomForest:
             ind = np.array([j for j in ind_all if j <
                             self.oos_pos[0] if not np.isnan(j)])
 
-            if len(ind_all) > 0:
+            if len(ind) > 0:
 
                 yy = np.array(self.ori_y.iloc[ind])
 
@@ -888,9 +888,7 @@ class MacroRandomForest:
                         yy, zz, everybody, everybody2, regul_mat, ncrd)
 
                 if yy.ndim == 2:
-                    print(yy)
                     yy = yy.reshape((-1,))
-                    print(yy)
 
                 if len(self.prior_var) != 0:
 
@@ -1086,10 +1084,11 @@ class MacroRandomForest:
             for k in range(len(self.z_pos) + 1):
                 bands[0, t, k] = np.nanquantile(
                     self.betas_draws_nonOVF[:, t, k], 0.16)
+
                 bands[1, t, k] = np.nanquantile(
                     self.betas_draws_nonOVF[:, t, k], 0.84)
 
-        nrows = math.ceil(len(self.z_pos)/2)
+        nrows = math.ceil((len(self.z_pos)+1)/2)
 
         fig, ax = plt.subplots(
             nrows=nrows, ncols=2, gridspec_kw={"wspace": 0.1, 'hspace': 0.3})
