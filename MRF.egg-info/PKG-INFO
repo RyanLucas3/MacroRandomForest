@@ -1,0 +1,24 @@
+Metadata-Version: 2.1
+Name: MRF
+Version: 1.0
+Summary: Macroeconomic Random Forest Code by Ryan Lucas and Philippe Goulet Coulombe
+Home-page: https://github.com/RyanLucas3/MacroRandomForest
+Download-URL: https://github.com/RyanLucas3/MacroRandomForest/archive/refs/tags/1.0.tar.gz
+Author: 
+Author-email: ryanlu@mit.edu
+License: MIT
+Keywords: Time Series,Forecasting,Economics,Macro,Machine Learning,RandomForest
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+
+UNKNOWN
+
