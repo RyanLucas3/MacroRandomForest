@@ -15,10 +15,14 @@ setup(
     # I explain this later on
     download_url='https://github.com/RyanLucas3/MacroRandomForest/archive/refs/tags/1.0.tar.gz',
     # Keywords that define your package best
-    keywords=['Time Series', 'Forecasting', 'Economics', "Macro", "Machine Learning", "RandomForest"],
-    install_requires=[            # I get to this in a second
-        'validators',
-        'beautifulsoup4',
+    keywords=['Time Series', 'Forecasting', 'Economics',
+              "Macro", "Machine Learning", "RandomForest"],
+    install_requires=[
+        'numpy'
+        'pandas'
+        'math'          # I get to this in a second
+        'matplotlib',
+        'joblib',
     ],
     classifiers=[
         # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
