@@ -8,7 +8,7 @@ setup(
     # Chose a license from here: https://help.github.com/articles/licensing-a-repository
     license='MIT',
     # Give a short description about your library
-    description='Macroeconomic Random Forest Code by Ryan Lucas and Philippe Goulet Coulombe',
+    description='Macroeconomic Random Forest by Ryan Lucas (code) and Philippe Goulet Coulombe (method)',
     author='',                   # Type in your name
     author_email='ryanlu@mit.edu',      # Type in your E-Mail
     # Provide either the link to your github or to your website
@@ -19,9 +19,9 @@ setup(
     keywords=['Time Series', 'Forecasting', 'Economics',
               "Macro", "Machine Learning", "RandomForest"],
     install_requires=[
-        'numpy'
-        'pandas'
-        'math'          # I get to this in a second
+        'numpy',
+        'pandas',
+        'math',        # I get to this in a second
         'matplotlib',
         'joblib',
     ],
