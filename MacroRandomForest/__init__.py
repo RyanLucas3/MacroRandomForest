@@ -1,1 +1,1 @@
-from MRF import *
+from .MRF import *

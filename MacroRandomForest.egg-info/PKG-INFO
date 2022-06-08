@@ -1,9 +1,9 @@
 Metadata-Version: 2.1
 Name: MacroRandomForest
-Version: 1.0.2
+Version: 1.0.3
 Summary: Macroeconomic Random Forest by Ryan Lucas (code) and Philippe Goulet Coulombe (method)
 Home-page: https://github.com/RyanLucas3/MacroRandomForest
-Download-URL: https://github.com/RyanLucas3/MacroRandomForest/archive/refs/tags/MacroRandomForest.tar.gz
+Download-URL: https://github.com/RyanLucas3/MacroRandomForest/archive/refs/tags/1.0.3.tar.gz
 Author: 
 Author-email: ryanlu@mit.edu
 License: MIT
