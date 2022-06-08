@@ -15,7 +15,7 @@ setup(
     # Provide either the link to your github or to your website
     url='https://github.com/RyanLucas3/MacroRandomForest',
     # I explain this later on
-    download_url='https://github.com/RyanLucas3/MacroRandomForest/archive/refs/tags/1.0.3.tar.gz',
+    download_url='https://github.com/RyanLucas3/MacroRandomForest/archive/refs/tags/1.0.4.tar.gz',
     # Keywords that define your package best
     keywords=['Time Series', 'Forecasting', 'Economics',
               "Macro", "Machine Learning", "RandomForest"],
