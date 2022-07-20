@@ -1,0 +1,10 @@
+README.md
+setup.cfg
+setup.py
+MacroRandomForest/MRF.py
+MacroRandomForest/__init__.py
+MacroRandomForest.egg-info/PKG-INFO
+MacroRandomForest.egg-info/SOURCES.txt
+MacroRandomForest.egg-info/dependency_links.txt
+MacroRandomForest.egg-info/requires.txt
+MacroRandomForest.egg-info/top_level.txt

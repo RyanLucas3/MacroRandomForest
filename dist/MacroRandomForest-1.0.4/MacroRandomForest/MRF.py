@@ -578,8 +578,8 @@ class MacroRandomForest:
                     tmp_filter = ["(" + filterr + ")" + " & " + "(" + f + ")"
                                   for f in tmp_filter]
 
-                nobs = np.array([splitting.loc[7, tmp_splitter],
-                                splitting.loc[6, tmp_splitter]])
+                nobs = np.array([splitting.loc[-1, tmp_splitter],
+                                splitting.loc[-2, tmp_splitter]])
 
                 if any(nobs <= self.minsize):
                     split_here = np.repeat(False, repeats=2, axis=0)
@@ -1074,11 +1074,9 @@ class MacroRandomForest:
 
         bands = np.stack(
             [np.zeros(shape=(len(self.data), len(self.z_pos)+1))]*2)
-        
+
         bands[0] = self.avg_beta_nonOVF
         bands[1] = self.avg_beta_nonOVF
-
-
 
         for t in range(len(self.data)):
             for k in range(len(self.z_pos) + 1):
@@ -1126,7 +1124,8 @@ class MacroRandomForest:
 
         for k in range(len(self.z_pos) + 1):
 
-
+            ax_positions[k].plot(
+                self.avg_beta_nonOVF[:, k].reshape(-1, 1), color='blue', label='Posterior Mean')
 
             for i in [0, 1]:
                 if i == 0:
@@ -1135,9 +1134,6 @@ class MacroRandomForest:
                 elif i == 1:
                     ax_positions[k].plot(bands[i, :, k].T,
                                          color='orange', label="_nolegend_")
-            
-            ax_positions[k].plot(
-                self.avg_beta_nonOVF[:, k].reshape(-1, 1), color='blue', label='Posterior Mean')
 
             ax_positions[k].axhline(
                 y=keep_OLS[k], color="green", linestyle='-', label="OLS")
@@ -1151,7 +1147,7 @@ class MacroRandomForest:
             else:
                 ax_positions[k].legend(loc='best')
 
-            ax_positions[k].set_xlabel(r"Date", fontsize=13)
+            ax_positions[k].set_xlabel(r"$t$", fontsize=13)
 
         fig.set_size_inches([20, nrows*5])
 
