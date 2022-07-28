@@ -28,8 +28,24 @@ class MacroRandomForest:
 
         # Dataset handling
         self.data, self.x_pos, self.oos_pos, self.y_pos, self.S_pos = data, x_pos, oos_pos, y_pos, S_pos
+
         self.ori_col_names = self.data.copy().columns
         self.data.columns = [i for i in range(len(data.columns))]
+
+        if y_pos != 0:
+            temp_y = self.data.iloc[:, y_pos]
+            del self.data[y_pos]
+            self.data = pd.concat([temp_y, self.data], axis = 1)
+        
+        for col in data.columns:
+            if data[col].isna().sum() > 0:
+                raise Exception("NaN error - please do not run MRF with missing values")
+
+        for col in data.columns:
+            try:
+                _ = data[col].astype(float)
+            except:
+                ValueError("Data must be numeric. Check that you haven't accidentally used date as your first column.")
 
         # Properties of the tree
         self.minsize, self.mtry_frac, self.min_leaf_frac_of_x = minsize, mtry_frac, min_leaf_frac_of_x
@@ -577,9 +593,10 @@ class MacroRandomForest:
                 if filterr != None:
                     tmp_filter = ["(" + filterr + ")" + " & " + "(" + f + ")"
                                   for f in tmp_filter]
+                
 
-                nobs = np.array([splitting.loc[7, tmp_splitter],
-                                splitting.loc[6, tmp_splitter]])
+                nobs = np.array([splitting.loc[len(splitting)-1, tmp_splitter],
+                                    splitting.loc[len(splitting)-2, tmp_splitter]])
 
                 if any(nobs <= self.minsize):
                     split_here = np.repeat(False, repeats=2, axis=0)
@@ -1074,11 +1091,9 @@ class MacroRandomForest:
 
         bands = np.stack(
             [np.zeros(shape=(len(self.data), len(self.z_pos)+1))]*2)
-        
+
         bands[0] = self.avg_beta_nonOVF
         bands[1] = self.avg_beta_nonOVF
-
-
 
         for t in range(len(self.data)):
             for k in range(len(self.z_pos) + 1):
@@ -1126,7 +1141,8 @@ class MacroRandomForest:
 
         for k in range(len(self.z_pos) + 1):
 
-
+            ax_positions[k].plot(
+                self.avg_beta_nonOVF[:, k].reshape(-1, 1), color='blue', label='Posterior Mean')
 
             for i in [0, 1]:
                 if i == 0:
@@ -1135,9 +1151,6 @@ class MacroRandomForest:
                 elif i == 1:
                     ax_positions[k].plot(bands[i, :, k].T,
                                          color='orange', label="_nolegend_")
-            
-            ax_positions[k].plot(
-                self.avg_beta_nonOVF[:, k].reshape(-1, 1), color='blue', label='Posterior Mean')
 
             ax_positions[k].axhline(
                 y=keep_OLS[k], color="green", linestyle='-', label="OLS")
@@ -1151,7 +1164,7 @@ class MacroRandomForest:
             else:
                 ax_positions[k].legend(loc='best')
 
-            ax_positions[k].set_xlabel(r"Date", fontsize=13)
+            ax_positions[k].set_xlabel(r"$t$", fontsize=13)
 
         fig.set_size_inches([20, nrows*5])
 
