@@ -1,5 +1,6 @@
 # MacroRandomForest
 
+We documented this package in much more detail at: https://mrf-web.readthedocs.io/en/latest/index.html.
 
 ---------------------------------------------------------------------------------------------------------------------------------
 *"Machine Learning is useful for macroeconomic forecasting but not so useful for macroeconomics" - Philippe Goulet Coulombe*
