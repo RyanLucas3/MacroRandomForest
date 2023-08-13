@@ -1029,55 +1029,55 @@ class MacroRandomForest:
 
         return yy, zz
 
-def _variable_importance(self, leafs, fitted, fitted_scaled, y, z, rando_vec, rw_regul_dat):
+    def _variable_importance(self, leafs, fitted, fitted_scaled, y, z, rando_vec, rw_regul_dat):
+        
+        '''
+        Variable Importance from the Forest
+        '''
+        
+        if self.VI_rep > 0:
     
-    '''
-    Variable Importance from the Forest
-    '''
+            whos_in = np.repeat(np.nan, repeats=len(self.x_pos), axis=0)
     
-    if self.VI_rep > 0:
-
-        whos_in = np.repeat(np.nan, repeats=len(self.x_pos), axis=0)
-
-        for k in range(len(self.x_pos)):
-
-            x = f"[{self.x_pos[k]}]"
-
-            x_in_filters = False
-
-            for filtr in leafs['FILTER']:
-                if x in filtr:
-                    x_in_filters = True
-
-            whos_in[k] = x_in_filters
-
-        beta_bank_shu = np.stack([self.beta_bank for _ in range(len(self.x_pos)+1)])
-
-        fitted_shu = np.zeros((len(fitted), len(self.x_pos)+1))
-
-        for k in range(len(self.x_pos)):
-            if whos_in[k]:
-                for ii in range(self.VI_rep):
-                    data_shu = self.data_ori.copy()
-                    data_shu.iloc[:, self.x_pos[k]] = np.random.choice(a=self.data_ori.iloc[:, self.x_pos[k]],
-                                                                       replace=False,
-                                                                       size=len(self.data_ori))
-
-                    pga = self._pred_given_tree(leafs, rando_vec, rw_regul_dat)
-
-                    weight = ((ii-1)/ii) if ii != 0 else 0
-                    beta_bank_shu[k+1] = weight * beta_bank_shu[k+1] + pga['beta_bank']/ii
-                    fitted_shu[:, k+1] = weight * fitted_shu[:, k+1] + pga['fitted']/ii
-
-            else:
-                beta_bank_shu[k+1] = self.beta_bank
-                fitted_shu[:, k+1] = fitted_scaled
-
-    else:
-        beta_bank_shu = np.stack([np.zeros(shape=self.beta_bank.shape) for _ in range(len(self.x_pos)+1)])
-        fitted_shu = np.zeros((len(fitted), len(self.x_pos)+1))
-
-    return beta_bank_shu, fitted_shu
+            for k in range(len(self.x_pos)):
+    
+                x = f"[{self.x_pos[k]}]"
+    
+                x_in_filters = False
+    
+                for filtr in leafs['FILTER']:
+                    if x in filtr:
+                        x_in_filters = True
+    
+                whos_in[k] = x_in_filters
+    
+            beta_bank_shu = np.stack([self.beta_bank for _ in range(len(self.x_pos)+1)])
+    
+            fitted_shu = np.zeros((len(fitted), len(self.x_pos)+1))
+    
+            for k in range(len(self.x_pos)):
+                if whos_in[k]:
+                    for ii in range(self.VI_rep):
+                        data_shu = self.data_ori.copy()
+                        data_shu.iloc[:, self.x_pos[k]] = np.random.choice(a=self.data_ori.iloc[:, self.x_pos[k]],
+                                                                           replace=False,
+                                                                           size=len(self.data_ori))
+    
+                        pga = self._pred_given_tree(leafs, rando_vec, rw_regul_dat)
+    
+                        weight = ((ii-1)/ii) if ii != 0 else 0
+                        beta_bank_shu[k+1] = weight * beta_bank_shu[k+1] + pga['beta_bank']/ii
+                        fitted_shu[:, k+1] = weight * fitted_shu[:, k+1] + pga['fitted']/ii
+    
+                else:
+                    beta_bank_shu[k+1] = self.beta_bank
+                    fitted_shu[:, k+1] = fitted_scaled
+    
+        else:
+            beta_bank_shu = np.stack([np.zeros(shape=self.beta_bank.shape) for _ in range(len(self.x_pos)+1)])
+            fitted_shu = np.zeros((len(fitted), len(self.x_pos)+1))
+    
+        return beta_bank_shu, fitted_shu
 
 
     def band_plots(self):
