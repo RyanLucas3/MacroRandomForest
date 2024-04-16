@@ -31,7 +31,7 @@ For those unfamiliar with random forests, the general fitting procedure involves
 
 After randomising over rows, we then take a random subset of the predictors, call it $\mathcal{J}^-$. MRF then performs a search for the optimal predictor and optimal splitting point. For each tree, we  implement least squares optimisation with a ridge penalty over $j \in \mathcal{J}^{-}$ and $c \in \mathbb{R}$, where c is the splitting point. Mathematically, this becomes:
 
-$$(j^*, c^*) = \min _{j \in \mathcal{J}^{-}, \; c \in \mathbb{R}} \left[\min _{\beta_{1}} \sum_{\left\{t \in l \mid S_{j, t} \leq c\right\}}\left(y_{t}-X_{t} \beta_{1}\right)^{2}+\lambda\left\|\beta_{1}\right\|_{2} +\min _{\beta_{2}} \sum_{\left\{t \in l \mid S_{j, t}>c\right\}}\left(y_{t}-X_{t} \beta_{2}\right)^{2}+\lambda\left\|\beta_{2}\right\|_{2}\right]$$
+$$(j^*, c^*) = \min_{j \in \mathcal{J}^-, c \in \mathbb{R}} \left[ \min_{\beta_1} \sum_{\{t \in l \mid S_{j, t} \leq c\}} (y_t - X_t \beta_1)^2 + \lambda \|\beta_1\|_2 + \min_{\beta_2} \sum_{\{t \in l \mid S_{j, t} > c\}} (y_t - X_t \beta_2)^2 + \lambda \|\beta_2\|_2 \right]$$
 
 Practically, optimisation over $c$ happens by sampling empirical quantiles of the predictor to be split. These become the possible options for the splits and we evaluate least squares repeatedly to find the optimal splitting point for a given predictor $j$. In an outer loop, we take the minimum to find $j^* \in \mathcal{J}^{-}$ and $c^* \in \mathbb{R}$.
 
