@@ -15,9 +15,9 @@ Within the modern ML canon, random forest is an extremely popular algorithm beca
 
 MRF shifts the focus of the forest away from predicting $y_t$ into modelling $\beta_t$, which are the economically meaningful coefficients in a time-varying linear macro equation. More formally:
 
-$y_t = X_t \beta_t  + \varepsilon_t$
+$$y_t = X_t \beta_t  + \varepsilon_t$$
 
-$\beta_t = \mathcal{F}(S_t)$
+$$\beta_t = \mathcal{F}(S_t)$$
 
 Where $S_t$ are the state variables governing time variation and $\mathcal{F}$ is a forest. $X_t$ is typically a subset of $S_t$ which we want to emphasize and for which associated coefficients may be of economic interest. There are interesting special cases. For instance, $X_t$ could use lags of $y_t$ -- an autoregressive random forest (ARRF) – which will outperform RF when applied to persistent time series. Typically $X_t \subset S_t$ is rather small (and focused) compared to $S_t$. 
 
@@ -31,7 +31,7 @@ For those unfamiliar with random forests, the general fitting procedure involves
 
 After randomising over rows, we then take a random subset of the predictors, call it $\mathcal{J}^-$. MRF then performs a search for the optimal predictor and optimal splitting point. For each tree, we  implement least squares optimisation with a ridge penalty over $j \in \mathcal{J}^{-}$ and $c \in \mathbb{R}$, where c is the splitting point. Mathematically, this becomes:
 
-$(j^*, c^*) = \min _{j \in \mathcal{J}^{-}, \; c \in \mathbb{R}} \left[\min _{\beta_{1}} \sum_{\left\{t \in l \mid S_{j, t} \leq c\right\}}\left(y_{t}-X_{t} \beta_{1}\right)^{2}+\lambda\left\|\beta_{1}\right\|_{2} +\min _{\beta_{2}} \sum_{\left\{t \in l \mid S_{j, t}>c\right\}}\left(y_{t}-X_{t} \beta_{2}\right)^{2}+\lambda\left\|\beta_{2}\right\|_{2}\right]$ 
+$$(j^*, c^*) = \min _{j \in \mathcal{J}^{-}, \; c \in \mathbb{R}} \left[\min _{\beta_{1}} \sum_{\left\{t \in l \mid S_{j, t} \leq c\right\}}\left(y_{t}-X_{t} \beta_{1}\right)^{2}+\lambda\left\|\beta_{1}\right\|_{2} +\min _{\beta_{2}} \sum_{\left\{t \in l \mid S_{j, t}>c\right\}}\left(y_{t}-X_{t} \beta_{2}\right)^{2}+\lambda\left\|\beta_{2}\right\|_{2}\right]$$
 
 Practically, optimisation over $c$ happens by sampling empirical quantiles of the predictor to be split. These become the possible options for the splits and we evaluate least squares repeatedly to find the optimal splitting point for a given predictor $j$. In an outer loop, we take the minimum to find $j^* \in \mathcal{J}^{-}$ and $c^* \in \mathbb{R}$.
 
